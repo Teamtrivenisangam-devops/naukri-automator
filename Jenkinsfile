@@ -131,7 +131,18 @@ pipeline {
                     '''
                 }
             }
-        }
+        } 
+        stage('ORAS Login to ACR') {
+    steps {
+        bat '''
+            for /f "usebackq tokens=*" %%t in (`az acr login --name naukribackendacr7291 --expose-token --output tsv --query accessToken`) do set BACKEND_TOKEN=%%t
+            oras login naukribackendacr7291.azurecr.io -u 00000000-0000-0000-0000-000000000000 -p %BACKEND_TOKEN%
+
+            for /f "usebackq tokens=*" %%t in (`az acr login --name naukrifrontendacr7291 --expose-token --output tsv --query accessToken`) do set FRONTEND_TOKEN=%%t
+            oras login naukrifrontendacr7291.azurecr.io -u 00000000-0000-0000-0000-000000000000 -p %FRONTEND_TOKEN%
+        '''
+    }
+}
 
         stage('Push to ACR') {
             parallel {
