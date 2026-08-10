@@ -17,13 +17,21 @@ pipeline {
         ORAS_HOME    = 'C:\\tools\\oras'
         PATH         = "${JAVA_HOME}\\bin;${env.PATH}"
         BACKEND_ACR  = 'naukribackendacr7291.azurecr.io'
-        FRONTEND_ACR = 'naukrifrontendacr7291.azurecr.io'
         IMAGE_TAG    = "${env.BUILD_NUMBER}"
     }
 
     stages {
 
-        stage('Preflight checks') {
+        stage('1. Checkout') {
+            steps {
+                echo '===== CHECKOUT SOURCE CODE ====='
+
+                git branch: 'main',
+                    url: 'https://github.com/Teamtrivenisangam-devops/naukri-automator.git'
+            }
+        }
+
+        stage('2. Preflight checks') {
             steps {
                 script {
                     def tools = [
@@ -49,68 +57,93 @@ pipeline {
             }
         }
 
-        stage('Build') {
-            parallel {
+        stage('3. Build Backend') {
+            steps {
+                bat '''
+                    mvn -f backend\\pom.xml clean package -DskipTests -Dmaven.test.skip=true
+                '''
+            }
 
-                stage('Backend') {
-                    steps {
-                        dir('backend') {
-                            retry(2) {
-                                bat 'mvn clean package -DfailIfNoTests=false'
-                            }
-                        }
-                    }
-
-                    post {
-                        success {
-                            script {
-                                def jar = 'backend/target/naukri-be.jar'
-
-                                if (!fileExists(jar)) {
-                                    error "Backend build reported success but ${jar} is missing"
-                                }
-                            }
-                        }
-                    }
-                }
-
-                stage('Frontend') {
-                    steps {
-                        dir('frontend') {
-
-                            retry(2) {
-                                bat 'npm ci'
-                            }
-
-                            bat 'npm run build'
-
-                            powershell '''
-                                if (-not (Test-Path "dist")) {
-                                    throw "frontend/dist missing after build"
-                                }
-
-                                Compress-Archive `
-                                    -Path dist\\* `
-                                    -DestinationPath dist.zip `
-                                    -Force
-                            '''
-                        }
-                    }
-
-                    post {
-                        success {
-                            script {
-                                if (!fileExists('frontend/dist.zip')) {
-                                    error "Frontend build reported success but dist.zip is missing"
-                                }
-                            }
+            post {
+                success {
+                    script {
+                        if (!fileExists('backend/target/naukri-be.jar')) {
+                            error 'Backend JAR was not generated.'
                         }
                     }
                 }
             }
         }
 
-        stage('Azure Login') {
+        stage('4. Build Frontend') {
+            steps {
+                dir('frontend') {
+                    bat 'npm ci'
+                    bat 'npm run build'
+                }
+            }
+
+            post {
+                success {
+                    script {
+                        if (!fileExists('frontend/dist/index.html')) {
+                            error 'Frontend build was not generated.'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('5. SonarQube Analysis') {
+            steps {
+                script {
+                    def scannerHome = tool 'SonarScanner'
+
+                    withSonarQubeEnv('SonarQubeServer') {
+                        bat "\"${scannerHome}\\bin\\sonar-scanner.bat\""
+                    }
+                }
+            }
+        }
+
+        stage('6. Build Electron Application') {
+            steps {
+                powershell '''
+                    & "$env:WORKSPACE\\build\\build.ps1" -Variant Ship
+
+                    if ($LASTEXITCODE -ne 0) {
+                        exit $LASTEXITCODE
+                    }
+                '''
+            }
+        }
+
+        stage('7. Verify EXE') {
+            steps {
+                powershell '''
+                    $dist = "$env:WORKSPACE\\dist"
+
+                    if (-not (Test-Path $dist)) {
+                        throw "dist directory does not exist."
+                    }
+
+                    $exeFiles = Get-ChildItem $dist -Filter "*.exe" -File
+
+                    if ($exeFiles.Count -eq 0) {
+                        throw "No EXE artifacts found."
+                    }
+
+                    Write-Host "===== EXE FILES ====="
+
+                    foreach ($exe in $exeFiles) {
+                        Write-Host $exe.FullName
+                        Write-Host "Size: $($exe.Length) bytes"
+                    }
+                '''
+            }
+        }
+
+        stage('8. Azure Login') {
             steps {
                 withCredentials([
                     azureServicePrincipal(
@@ -131,42 +164,51 @@ pipeline {
                     '''
                 }
             }
-        } 
-        stage('ORAS Login to ACR') {
-    steps {
-        bat '''
-            for /f "usebackq tokens=*" %%t in (`az acr login --name naukribackendacr7291 --expose-token --output tsv --query accessToken`) do set BACKEND_TOKEN=%%t
-            oras login naukribackendacr7291.azurecr.io -u 00000000-0000-0000-0000-000000000000 -p %BACKEND_TOKEN%
+        }
 
-            for /f "usebackq tokens=*" %%t in (`az acr login --name naukrifrontendacr7291 --expose-token --output tsv --query accessToken`) do set FRONTEND_TOKEN=%%t
-            oras login naukrifrontendacr7291.azurecr.io -u 00000000-0000-0000-0000-000000000000 -p %FRONTEND_TOKEN%
-        '''
-    }
-}
+        stage('9. ORAS Login to ACR') {
+            steps {
+                bat '''
+                    for /f "usebackq tokens=*" %%t in (`az acr login --name naukribackendacr7291 --expose-token --output tsv --query accessToken`) do set BACKEND_TOKEN=%%t
 
-        stage('Push to ACR') {
-            parallel {
+                    oras login naukribackendacr7291.azurecr.io ^
+                        -u 00000000-0000-0000-0000-000000000000 ^
+                        -p %BACKEND_TOKEN%
+                '''
+            }
+        }
 
-                stage('Push Backend') {
-                    steps {
-                        bat "oras push ${BACKEND_ACR}/backend:${IMAGE_TAG} backend/target/naukri-be.jar"
-                        bat "oras push ${BACKEND_ACR}/backend:latest backend/target/naukri-be.jar"
-                    }
-                }
+        stage('10. Push Backend to ACR') {
+            steps {
+                bat "oras push ${BACKEND_ACR}/backend:${IMAGE_TAG} backend/target/naukri-be.jar"
+                bat "oras push ${BACKEND_ACR}/backend:latest backend/target/naukri-be.jar"
+            }
+        }
 
-                stage('Push Frontend') {
-                    steps {
-                        bat "oras push ${FRONTEND_ACR}/frontend:${IMAGE_TAG} frontend/dist.zip"
-                        bat "oras push ${FRONTEND_ACR}/frontend:latest frontend/dist.zip"
-                    }
-                }
+        stage('11. Archive EXE') {
+            steps {
+                archiveArtifacts(
+                    artifacts: 'dist/*.exe',
+                    fingerprint: true
+                )
+            }
+        }
+
+        stage('12. Upload EXE to Azure Blob') {
+            steps {
+                azureUpload(
+                    containerName: 'smcont',
+                    storageType: 'blobstorage',
+                    filesPath: 'dist/*.exe',
+                    storageCredentialId: 'azure-storage-cred'
+                )
             }
         }
     }
 
     post {
         success {
-            echo "Build ${env.BUILD_NUMBER} pushed backend/frontend as tag ${IMAGE_TAG} and latest."
+            echo "Build ${env.BUILD_NUMBER} succeeded. EXE generated, archived, uploaded to Blob, and backend pushed to ACR."
         }
 
         failure {
