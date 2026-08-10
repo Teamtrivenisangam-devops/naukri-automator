@@ -94,19 +94,7 @@ pipeline {
             }
         }
 
-        stage('5. SonarQube Analysis') {
-            steps {
-                script {
-                    def scannerHome = tool 'SonarScanner'
-
-                    withSonarQubeEnv('SonarQubeServer') {
-                        bat "\"${scannerHome}\\bin\\sonar-scanner.bat\""
-                    }
-                }
-            }
-        }
-
-        stage('6. Build Electron Application') {
+        stage('5. Build Electron Application') {
             steps {
                 powershell '''
                     & "$env:WORKSPACE\\build\\build.ps1" -Variant Ship
@@ -118,7 +106,7 @@ pipeline {
             }
         }
 
-        stage('7. Verify EXE') {
+        stage('6. Verify EXE') {
             steps {
                 powershell '''
                     $dist = "$env:WORKSPACE\\dist"
@@ -143,7 +131,7 @@ pipeline {
             }
         }
 
-        stage('8. Azure Login') {
+        stage('7. Azure Login') {
             steps {
                 withCredentials([
                     azureServicePrincipal(
@@ -166,7 +154,7 @@ pipeline {
             }
         }
 
-        stage('9. ORAS Login to ACR') {
+        stage('8. ORAS Login to ACR') {
             steps {
                 bat '''
                     for /f "usebackq tokens=*" %%t in (`az acr login --name naukribackendacr7291 --expose-token --output tsv --query accessToken`) do set BACKEND_TOKEN=%%t
@@ -178,14 +166,14 @@ pipeline {
             }
         }
 
-        stage('10. Push Backend to ACR') {
+        stage('9. Push Backend to ACR') {
             steps {
                 bat "oras push ${BACKEND_ACR}/backend:${IMAGE_TAG} backend/target/naukri-be.jar"
                 bat "oras push ${BACKEND_ACR}/backend:latest backend/target/naukri-be.jar"
             }
         }
 
-        stage('11. Archive EXE') {
+        stage('10. Archive EXE') {
             steps {
                 archiveArtifacts(
                     artifacts: 'dist/*.exe',
@@ -194,7 +182,7 @@ pipeline {
             }
         }
 
-        stage('12. Upload EXE to Azure Blob') {
+        stage('11. Upload EXE to Azure Blob') {
             steps {
                 azureUpload(
                     containerName: 'smcont',
