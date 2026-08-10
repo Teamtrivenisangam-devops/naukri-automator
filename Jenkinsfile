@@ -1,9 +1,19 @@
 pipeline {
     agent any
+
     triggers {
-        githubPush()   // fires when GitHub webhook hits Jenkins
+        githubPush()
     }
+
     stages {
+
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/Teamtrivenisangam-devops/naukri-automator.git'
+            }
+        }
+
         stage('Backend build') {
             steps {
                 dir('backend') {
@@ -15,6 +25,7 @@ pipeline {
                 }
             }
         }
+
         stage('Frontend build') {
             steps {
                 dir('frontend') {
@@ -23,6 +34,7 @@ pipeline {
                 }
             }
         }
+
         stage('Zip frontend dist') {
             steps {
                 dir('frontend') {
@@ -30,12 +42,14 @@ pipeline {
                 }
             }
         }
+
         stage('Push backend to ACR') {
             steps {
                 bat 'az login --identity'
                 bat 'oras push naukribackendacr7291.azurecr.io/backend:latest backend/target/naukri-be.jar'
             }
         }
+
         stage('Push frontend to ACR') {
             steps {
                 bat 'oras push naukrifrontendacr7291.azurecr.io/frontend:latest frontend/dist.zip'
