@@ -1,10 +1,6 @@
 pipeline {
     agent any
 
-    tools {
-        jdk 'jdk17'   // configure this name under Manage Jenkins > Tools > JDK installations
-    }
-
     triggers {
         githubPush()
     }
@@ -18,7 +14,8 @@ pipeline {
     }
 
     environment {
-        PATH = "${env.JAVA_HOME}\\bin;${env.PATH}"
+        JAVA_HOME = 'C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot'
+        PATH = "${JAVA_HOME}\\bin;${env.PATH}"
 
         AZ_STORAGE_ACCOUNT = 'naukristorage7291'
         AZ_CONTAINER = 'smcont'
