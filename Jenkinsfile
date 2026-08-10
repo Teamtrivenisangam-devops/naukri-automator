@@ -139,9 +139,11 @@ pipeline {
         stage('Build Electron') {
             steps {
                 powershell '''
+                    $global:LASTEXITCODE = 0
+
                     & "$env:WORKSPACE\\build\\build.ps1" -Variant Ship
 
-                    if ($LASTEXITCODE -ne 0) {
+                    if ((Test-Path variable:LASTEXITCODE) -and $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
                         exit $LASTEXITCODE
                     }
                 '''
