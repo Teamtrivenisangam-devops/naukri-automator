@@ -11,13 +11,15 @@ function getPort(): number {
 }
 
 function wsUrl(jobId: string): string {
+  if (import.meta.env.MODE === "test") {
+    return `ws://127.0.0.1:5000/ws/jobs/${jobId}`;
+  }
+
   if (import.meta.env.DEV) {
-    // DEV: connect directly to the standalone BE at :8080. The Vite WS proxy
-    // has been observed to close the upgrade before Spring's handshake
-    // completes; direct-connect avoids that entirely. The BE's WS handler
-    // has setAllowedOriginPatterns("*") so cross-origin from :5173 is fine.
+    // DEV: connect directly to the standalone BE at :8080.
     return `ws://127.0.0.1:8080/ws/jobs/${jobId}`;
   }
+
   return `ws://127.0.0.1:${getPort()}/ws/jobs/${jobId}`;
 }
 

@@ -44,14 +44,19 @@ class JobControllerTest {
         mvc.perform(post("/api/jobs")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                            {
-                              "emails":["a@x.com"],
-                              "password":"p",
-                              "headless":false,
-                              "manualLogin":false,
-                              "outputFolder":"C:\\\\tmp\\\\r"
-                            }
-                        """))
+{
+  "accounts":[
+    {
+      "name":"Test User",
+      "email":"a@x.com"
+    }
+  ],
+  "password":"p",
+  "headless":false,
+  "manualLogin":false,
+  "outputFolder":"C:\\tmp\\r"
+}
+"""))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.jobId").value("job-123"))
                 .andExpect(jsonPath("$.wsUrl").value("/ws/jobs/job-123"));
@@ -98,15 +103,15 @@ class JobControllerTest {
     void start_rejects_empty_emails_with_400() throws Exception {
         mvc.perform(post("/api/jobs")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                            {
-                              "emails":[],
-                              "password":"p",
-                              "headless":false,
-                              "manualLogin":false,
-                              "outputFolder":"C:\\\\tmp"
-                            }
-                        """))
+                       .content("""
+{
+  "accounts":[],
+  "password":"pass",
+  "headless":false,
+  "manualLogin":false,
+  "outputFolder":"C:\\tmp"
+}
+"""))
                 .andExpect(status().isBadRequest());
     }
 
@@ -119,14 +124,19 @@ class JobControllerTest {
         mvc.perform(post("/api/jobs")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                            {
-                              "emails":["a@x.com"],
-                              "password":"   ",
-                              "headless":false,
-                              "manualLogin":false,
-                              "outputFolder":"C:\\\\tmp"
-                            }
-                        """))
+{
+  "accounts":[
+    {
+      "name":"Test User",
+      "email":"a@x.com"
+    }
+  ],
+  "password":"   ",
+  "headless":false,
+  "manualLogin":false,
+  "outputFolder":"C:\\tmp"
+}
+"""))
                 .andExpect(status().isBadRequest());
     }
 
@@ -142,14 +152,19 @@ class JobControllerTest {
         mvc.perform(post("/api/jobs")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                            {
-                              "emails":["a@x.com"],
-                              "password":"pass",
-                              "headless":false,
-                              "manualLogin":false,
-                              "outputFolder":"C:\\\\tmp\\\\r"
-                            }
-                        """))
+{
+  "accounts":[
+    {
+      "name":"Test User",
+      "email":"a@x.com"
+    }
+  ],
+  "password":"pass",
+  "headless":false,
+  "manualLogin":false,
+  "outputFolder":"C:\\tmp\\r"
+}
+"""))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("job-already-running"));
     }

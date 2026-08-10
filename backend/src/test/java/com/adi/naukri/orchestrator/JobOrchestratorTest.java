@@ -8,6 +8,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import com.adi.naukri.api.AccountInput;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -39,7 +40,7 @@ class JobOrchestratorTest {
 
     /** Fake automator that instantly returns all-OK step results. */
     private static Automator fakeOk() {
-        return (email, password, mode, cfg, session, gate, listener) -> {
+    return (email, name, password, mode, cfg, session, gate, listener) -> {
             List<StepResult> steps = new ArrayList<>();
             for (AutomationStep s : AutomationStep.values()) {
                 listener.onStepStarted(s);
@@ -58,7 +59,7 @@ class JobOrchestratorTest {
      */
     private static Automator fakeBlockingGate(CountDownLatch releaseSignal,
                                                CountDownLatch awaitingLatch) {
-        return (email, password, mode, cfg, session, gate, listener) -> {
+        return (email, name, password, mode, cfg, session, gate, listener) -> {
             // Signal that we're at the gate
             awaitingLatch.countDown();
             // Block until gate is released (test calls continueNow)
@@ -106,10 +107,13 @@ class JobOrchestratorTest {
     // -----------------------------------------------------------------------
     @Test
     void threeAccountsAllOk_publishesFullEventSequenceAndWritesReport() throws Exception {
-        List<String> emails = List.of("a@a.com", "b@b.com", "c@c.com");
+        List<AccountInput> emails = List.of(
+        new AccountInput("A", "a@a.com"),
+        new AccountInput("B", "b@b.com"),
+        new AccountInput("C", "c@c.com"));
         JobRequest req = new JobRequest(
-                emails, "secret", false, false,
-                tempDir.toString(), null);
+        emails, "secret", false, false,
+        tempDir.toString(), null, null);
 
         List<JobEvent> events = new CopyOnWriteArrayList<>();
         CountDownLatch done = new CountDownLatch(1);
@@ -168,7 +172,7 @@ class JobOrchestratorTest {
         // releaseFirst: test releases it after calling stop()
         CountDownLatch releaseFirst = new CountDownLatch(1);
 
-        Automator blockingFake = (email, password, mode, cfg, session, gate, listener) -> {
+        Automator blockingFake = (email, name, password, mode, cfg, session, gate, listener) -> {
             List<StepResult> steps = new ArrayList<>();
             listener.onStepStarted(AutomationStep.LOGIN);
             StepResult r = StepResult.success(AutomationStep.LOGIN, 5L);
@@ -192,8 +196,21 @@ class JobOrchestratorTest {
             if (e instanceof JobEvent.RunStopped) stopped.countDown();
         });
 
-        List<String> emails = List.of("a@a.com", "b@b.com", "c@c.com");
-        JobRequest req = new JobRequest(emails, "pwd", false, false, tempDir.toString(), null);
+        List<AccountInput> accounts = List.of(
+              new AccountInput("User1", "a@a.com"),
+              new AccountInput("User2", "b@b.com"),
+              new AccountInput("User3", "c@c.com")
+             );
+
+            JobRequest req = new JobRequest(
+    accounts,
+    "pwd",
+    false,
+    false,
+    tempDir.toString(),
+    null,      // resumeFolderPath
+    null       // baseUrlOverride
+);
         JobHandle handle = orchestrator.start(req);
 
         // Wait until worker is inside a@a.com, THEN call stop() before releasing
@@ -231,8 +248,8 @@ class JobOrchestratorTest {
         });
 
         JobRequest req = new JobRequest(
-                List.of("gated@x.com"), "pwd", false, true,
-                tempDir.toString(), null);
+        List.of(new AccountInput("Gated", "gated@x.com")), "pwd", false, true,
+        tempDir.toString(), null, null);
         JobHandle handle = orchestrator.start(req);
 
         // Wait until the orchestrator publishes AwaitManualLogin
@@ -258,16 +275,16 @@ class JobOrchestratorTest {
     @Test
     void concurrentSecondStart_throwsIllegalStateException() throws Exception {
         CountDownLatch blocker = new CountDownLatch(1);
-        Automator blockingFake = (email, password, mode, cfg, session, gate, listener) -> {
+        Automator blockingFake = (email, name, password, mode, cfg, session, gate, listener) -> {
             try { blocker.await(10, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
             return List.of(StepResult.success(AutomationStep.LOGIN, 5L));
         };
 
         makeOrchestrator(blockingFake);
 
-        JobRequest req = new JobRequest(List.of("x@x.com"), "pwd", false, false,
-                tempDir.toString(), null);
-
+        JobRequest req = new JobRequest(
+        List.of(new AccountInput("X", "x@x.com")), "pwd", false, false,
+        tempDir.toString(), null, null);
         // Start first run — it will block on blocker latch
         orchestrator.start(req);
 
@@ -291,8 +308,8 @@ class JobOrchestratorTest {
         });
 
         JobRequest req = new JobRequest(
-                List.of("smoke@test.com"), "pass", false, false,
-                tempDir.toString(), null);
+        List.of(new AccountInput("Smoke", "smoke@test.com")), "pass", false, false,
+        tempDir.toString(), null, null);
         JobHandle handle = orchestrator.start(req);
         assertTrue(done.await(10, TimeUnit.SECONDS));
         handle.future().get(2, TimeUnit.SECONDS);

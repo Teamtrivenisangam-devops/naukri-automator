@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Stop'
 $root  = $PSScriptRoot
 $be    = Join-Path $root 'backend\target\naukri-be.jar'
 $mock  = Join-Path $root 'mock-naukri\target\mock-naukri.jar'
-$JAVA_HOME_DEV = 'C:\Users\e182114\.jdks\azul-17.0.10'
+$JAVA_HOME_DEV = 'C:\Users\ADMIN\AppData\Local\Programs\Eclipse Adoptium\jdk-17.0.17.10-hotspot'
 
 Write-Host "==== NaukriAutomator DEV launcher ====" -ForegroundColor Cyan
 

@@ -10,12 +10,32 @@ import EmailChipInput from "./EmailChipInput";
 
 describe("EmailChipInput", () => {
   it("(a) typing a valid email and pressing Enter adds a chip", async () => {
-    const onChange = vi.fn();
-    render(<EmailChipInput value={[]} onChange={onChange} />);
-    const input = screen.getByTestId("chip-input");
-    await userEvent.type(input, "a@x.com{Enter}");
-    expect(onChange).toHaveBeenCalledWith(["a@x.com"]);
-  });
+  const onChange = vi.fn();
+
+  render(
+    <EmailChipInput
+      value={[]}
+      onChange={onChange}
+    />
+  );
+
+  await userEvent.type(
+    screen.getByTestId("chip-name-input"),
+    "Alice"
+  );
+
+  await userEvent.type(
+    screen.getByTestId("chip-input"),
+    "a@x.com{Enter}"
+  );
+
+  expect(onChange).toHaveBeenCalledWith([
+    {
+      name: "Alice",
+      email: "a@x.com",
+    },
+  ]);
+});
 
   it("(b) invalid email shows error and does NOT add a chip", async () => {
     const onChange = vi.fn();

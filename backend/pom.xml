@@ -17,6 +17,7 @@
     <java.version>17</java.version>
     <maven.compiler.source>17</maven.compiler.source>
     <maven.compiler.target>17</maven.compiler.target>
+    <mockito.version>5.14.2</mockito.version> <!-- check for latest -->
     <playwright.version>1.44.0</playwright.version>
     <poi.version>5.2.5</poi.version>
   </properties>

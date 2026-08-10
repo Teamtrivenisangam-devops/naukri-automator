@@ -104,9 +104,12 @@ class NaukriAutomatorAgainstMockIT {
     void full_happy_flow_completes_all_steps() throws Exception {
         try (PlaywrightSession session = new PlaywrightSession()) {
             List<StepResult> results = new NaukriAutomator().run(
-                    "ok@x.com", "password",
+                    "ok@x.com",
+                    "test-user",
+                    "password",
                     AutomationRunMode.HEADLESS,
-                    cfg(false), session,
+                    cfg(false),
+                    session,
                     (email, timeout, dash) -> true,
                     noopListener()
             );
@@ -138,11 +141,14 @@ class NaukriAutomatorAgainstMockIT {
     void bad_credentials_short_circuits_with_auth_failed() throws Exception {
         try (PlaywrightSession session = new PlaywrightSession()) {
             List<StepResult> results = new NaukriAutomator().run(
-                    "bad@x.com", "wrongpassword",
-                    AutomationRunMode.HEADLESS,
-                    cfg(false), session,
-                    (email, timeout, dash) -> true,
-                    noopListener()
+                     "bad@x.com",
+                     "test-user",
+                     "wrongpassword",
+                     AutomationRunMode.HEADLESS,
+                     cfg(false),
+                     session,
+                     (email, timeout, dash) -> true,
+                     noopListener()
             );
 
             assertEquals(1, results.size(),
@@ -164,9 +170,12 @@ class NaukriAutomatorAgainstMockIT {
     void otp_page_short_circuits_with_requires_manual() throws Exception {
         try (PlaywrightSession session = new PlaywrightSession()) {
             List<StepResult> results = new NaukriAutomator().run(
-                    "otp@x.com", "anypassword",
+                    "otp@x.com",
+                    "test-user",
+                    "anypassword",
                     AutomationRunMode.HEADLESS,
-                    cfg(false), session,
+                    cfg(false),
+                    session,
                     (email, timeout, dash) -> true,
                     noopListener()
             );
@@ -209,17 +218,26 @@ class NaukriAutomatorAgainstMockIT {
             };
 
             List<StepResult> results = new NaukriAutomator().run(
-                    "otp@x.com", "anypassword",
-                    AutomationRunMode.HEADLESS,
-                    cfg(true), session,
-                    testGate,
-                    new StepListener() {
-                        @Override public void onStepStarted(AutomationStep step) {}
-                        @Override public void onStep(StepResult r) {}
-                        @Override public void onManualLoginAwait(String e) {
-                            // Gate will be called right after this; gate lambda emits AwaitManualLogin.
-                        }
-                    }
+                     "otp@x.com",
+                     "test-user",
+                     "anypassword",
+                     AutomationRunMode.HEADLESS,
+                     cfg(true),
+                     session,
+                     testGate,
+                     new StepListener() {
+                         @Override
+                         public void onStepStarted(AutomationStep step) {
+                         }
+
+                         @Override
+                         public void onStep(StepResult result) {
+                         }
+
+                         @Override
+                         public void onManualLoginAwait(String email) {
+                         }
+        }
             );
 
             // Full happy path should succeed

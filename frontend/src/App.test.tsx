@@ -68,13 +68,41 @@ const { default: App } = await import("./App");
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 /** Helper: fill SetupScreen and click Start, using a given email and expecting navigation to run. */
+
 async function fillAndStart(email: string): Promise<void> {
-  await userEvent.click(screen.getByRole("tab", { name: /enter manually/i }));
-  await userEvent.type(screen.getByTestId("chip-input"), `${email}{Enter}`);
-  await userEvent.type(screen.getByTestId("password"), "pass123");
-  await userEvent.type(screen.getByTestId("output-folder"), "C:\\runs");
+  await userEvent.click(
+    screen.getByRole("tab", { name: /enter manually/i })
+  );
+
+  await userEvent.type(
+    screen.getByTestId("chip-name-input"),
+    "Alice"
+  );
+
+  await userEvent.type(
+    screen.getByTestId("chip-input"),
+    `${email}{Enter}`
+  );
+
+  await userEvent.type(
+    screen.getByTestId("password"),
+    "pass123"
+  );
+
+  await userEvent.type(
+    screen.getByTestId("resume-folder"),
+    "C:\\resumes"
+  );
+
+  await userEvent.type(
+    screen.getByTestId("output-folder"),
+    "C:\\runs"
+  );
+
   await userEvent.click(screen.getByTestId("start"));
 }
+
+
 
 describe("App router", () => {
   beforeEach(() => {

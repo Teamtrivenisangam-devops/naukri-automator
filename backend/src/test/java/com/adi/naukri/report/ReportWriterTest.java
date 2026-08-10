@@ -36,8 +36,13 @@ class ReportWriterTest {
         assertTrue(csvText.contains("b@x.com,AUTH_FAILED,wrong password,,,"));
 
         var parsed = new ObjectMapper().readTree(Files.readString(json));
-        assertEquals(2, parsed.size());
-        assertEquals("OK", parsed.get(0).get("status").asText());
-        assertEquals(1500, parsed.get(0).get("steps").get(0).get("durationMs").asInt());
+
+assertTrue(parsed.has("accounts"));
+
+var accounts = parsed.get("accounts");
+
+assertEquals(2, accounts.size());
+assertEquals("OK", accounts.get(0).get("status").asText());
+assertEquals(1500, accounts.get(0).get("steps").get(0).get("durationMs").asInt());
     }
 }

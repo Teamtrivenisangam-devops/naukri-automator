@@ -55,7 +55,7 @@
   <h1>My Profile</h1>
 
   <!-- ── Resume headline widget (verified real DOM shape) ────────────────── -->
-  <div class="card mt15">
+  <div id="lazyResumeHead" class="card mt15">
     <div class="">
       <div class="widgetHead">
         <span class="widgetTitle typ-16Bold">Resume headline</span>
@@ -180,14 +180,7 @@
     function closeHeadlineModal() {
       document.getElementById('headline-modal').classList.remove('open');
     }
-    function showToast() {
-      var t = document.getElementById('success-toast');
-      var span = t.querySelector('.success-text');
-      t.classList.add('show');
-      if (span) span.style.opacity = '1';
-      // Fade only the inner text after 3s. Container stays .show'd forever
-      // to match real Naukri behavior where the container persists in DOM.
-      setTimeout(function () { if (span) span.style.opacity = '0'; }, 3000);
+    function showToast() { var t = document.getElementById('success-toast'); var span = t.querySelector('.success-text'); t.classList.add('show'); if (span) span.style.opacity = '1'; setTimeout(function () { if (span) span.style.opacity = '0'; }, 3000); } Replace the WHOLE function with: function showToast() { var t = document.getElementById('success-toast'); if (!t) { t = document.createElement('div'); t.id = 'success-toast'; t.className = 'success-message-container'; t.innerHTML = '<div class="success-icon-wrapper">\u2713</div>' + '<span class="success-text">Profile updated successfully</span>'; document.body.appendChild(t); } var span = t.querySelector('.success-text'); t.classList.add('show'); if (span) span.style.opacity = '1'; setTimeout(function () { if (span) span.style.opacity = '0'; }, 3000); 
     }
     function saveHeadline(e) {
       if (e) e.preventDefault();
