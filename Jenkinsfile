@@ -14,6 +14,7 @@ pipeline {
 
     environment {
         JAVA_HOME    = 'C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot'
+        ORAS_HOME    = 'C:\\tools\\oras'
         PATH         = "${JAVA_HOME}\\bin;${env.PATH}"
         BACKEND_ACR  = 'naukribackendacr7291.azurecr.io'
         FRONTEND_ACR = 'naukrifrontendacr7291.azurecr.io'
