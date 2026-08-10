@@ -25,9 +25,21 @@ pipeline {
         stage('Preflight checks') {
             steps {
                 script {
-                    def tools = ['java -version', 'mvn -version', 'node -v', 'npm -v', 'oras version', 'az version']
+                    def tools = [
+                        'java -version',
+                        'mvn -version',
+                        'node -v',
+                        'npm -v',
+                        'oras version',
+                        'az version'
+                    ]
+
                     tools.each { cmd ->
-                        def status = bat(script: "@${cmd}", returnStatus: true)
+                        def status = bat(
+                            script: "@${cmd}",
+                            returnStatus: true
+                        )
+
                         if (status != 0) {
                             error "Preflight failed: '${cmd}' is not available on this agent."
                         }
@@ -38,6 +50,7 @@ pipeline {
 
         stage('Build') {
             parallel {
+
                 stage('Backend') {
                     steps {
                         dir('backend') {
@@ -46,10 +59,12 @@ pipeline {
                             }
                         }
                     }
+
                     post {
                         success {
                             script {
                                 def jar = 'backend/target/naukri-be.jar'
+
                                 if (!fileExists(jar)) {
                                     error "Backend build reported success but ${jar} is missing"
                                 }
@@ -57,19 +72,30 @@ pipeline {
                         }
                     }
                 }
+
                 stage('Frontend') {
                     steps {
                         dir('frontend') {
+
                             retry(2) {
                                 bat 'npm ci'
                             }
+
                             bat 'npm run build'
+
                             powershell '''
-                                if (-not (Test-Path "dist")) { throw "frontend/dist missing after build" }
-                                Compress-Archive -Path dist\\* -DestinationPath dist.zip -Force
+                                if (-not (Test-Path "dist")) {
+                                    throw "frontend/dist missing after build"
+                                }
+
+                                Compress-Archive `
+                                    -Path dist\\* `
+                                    -DestinationPath dist.zip `
+                                    -Force
                             '''
                         }
                     }
+
                     post {
                         success {
                             script {
@@ -83,27 +109,44 @@ pipeline {
             }
         }
 
-        stage('Push to ACR') {
+        stage('Azure Login') {
             steps {
-                withCredentials([azureServicePrincipal(credentialsId: 'azure-sp-naukri',
+                withCredentials([
+                    azureServicePrincipal(
+                        credentialsId: 'azure-sp-naukri',
                         subscriptionIdVariable: 'AZ_SUBSCRIPTION_ID',
                         clientIdVariable: 'AZ_CLIENT_ID',
                         clientSecretVariable: 'AZ_CLIENT_SECRET',
-                        tenantIdVariable: 'AZ_TENANT_ID')]) {
+                        tenantIdVariable: 'AZ_TENANT_ID'
+                    )
+                ]) {
                     bat '''
-                        az login --service-principal -u %AZ_CLIENT_ID% -p %AZ_CLIENT_SECRET% --tenant %AZ_TENANT_ID%
+                        az login --service-principal ^
+                          -u %AZ_CLIENT_ID% ^
+                          -p %AZ_CLIENT_SECRET% ^
+                          --tenant %AZ_TENANT_ID%
+
                         az account set --subscription %AZ_SUBSCRIPTION_ID%
                     '''
-                    parallel(
-                        backend: {
-                            bat "oras push ${BACKEND_ACR}/backend:${IMAGE_TAG} backend/target/naukri-be.jar"
-                            bat "oras push ${BACKEND_ACR}/backend:latest backend/target/naukri-be.jar"
-                        },
-                        frontend: {
-                            bat "oras push ${FRONTEND_ACR}/frontend:${IMAGE_TAG} frontend/dist.zip"
-                            bat "oras push ${FRONTEND_ACR}/frontend:latest frontend/dist.zip"
-                        }
-                    )
+                }
+            }
+        }
+
+        stage('Push to ACR') {
+            parallel {
+
+                stage('Push Backend') {
+                    steps {
+                        bat "oras push ${BACKEND_ACR}/backend:${IMAGE_TAG} backend/target/naukri-be.jar"
+                        bat "oras push ${BACKEND_ACR}/backend:latest backend/target/naukri-be.jar"
+                    }
+                }
+
+                stage('Push Frontend') {
+                    steps {
+                        bat "oras push ${FRONTEND_ACR}/frontend:${IMAGE_TAG} frontend/dist.zip"
+                        bat "oras push ${FRONTEND_ACR}/frontend:latest frontend/dist.zip"
+                    }
                 }
             }
         }
@@ -113,9 +156,11 @@ pipeline {
         success {
             echo "Build ${env.BUILD_NUMBER} pushed backend/frontend as tag ${IMAGE_TAG} and latest."
         }
+
         failure {
             echo "Build ${env.BUILD_NUMBER} failed - check the first red stage above."
         }
+
         always {
             bat 'az logout || exit 0'
             cleanWs()
