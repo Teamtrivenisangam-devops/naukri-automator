@@ -109,28 +109,6 @@ pipeline {
             }
         }
 
-        stage('Check Version Not Already Released') {
-            steps {
-                script {
-                    def exists = bat(
-                        script: '''
-                            @az storage blob exists ^
-                            --account-name %AZ_STORAGE_ACCOUNT% ^
-                            --container-name %AZ_CONTAINER% ^
-                            --name %RELEASE_VERSION%/.marker ^
-                            --auth-mode login ^
-                            --query exists -o tsv
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-                    if (exists == 'true') {
-                        error "Version ${env.RELEASE_VERSION} already exists in blob storage. Aborting to avoid overwrite."
-                    }
-                }
-            }
-        }
-
         stage('Build Backend') {
             steps {
                 bat '''
