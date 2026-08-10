@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    tools {
+        jdk 'jdk17'   // configure this name under Manage Jenkins > Tools > JDK installations
+    }
+
     triggers {
         githubPush()
     }
@@ -9,92 +13,155 @@ pipeline {
         timestamps()
         disableConcurrentBuilds()
         timeout(time: 30, unit: 'MINUTES')
-        buildDiscarder(logRotator(numToKeepStr: '15'))
+        buildDiscarder(logRotator(numToKeepStr: '15', artifactNumToKeepStr: '15'))
+        skipDefaultCheckout(false)
     }
 
     environment {
-        JAVA_HOME    = 'C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot'
-        ORAS_HOME    = 'C:\\tools\\oras'
-        PATH         = "${JAVA_HOME}\\bin;${env.PATH}"
-        BACKEND_ACR  = 'naukribackendacr7291.azurecr.io'
-        IMAGE_TAG    = "${env.BUILD_NUMBER}"
+        PATH = "${env.JAVA_HOME}\\bin;${env.PATH}"
+
+        AZ_STORAGE_ACCOUNT = 'naukristorage7291'
+        AZ_CONTAINER = 'smcont'
+
+        NOTIFY_EMAIL = 'teamtrivenisangam2026@gmail.com'
+
+        BASE_VERSION = ''
+        RELEASE_VERSION = ''
     }
 
     stages {
 
-        stage('1. Checkout') {
+        stage('Checkout') {
             steps {
-                echo '===== CHECKOUT SOURCE CODE ====='
-
                 git branch: 'main',
                     url: 'https://github.com/Teamtrivenisangam-devops/naukri-automator.git'
             }
         }
 
-        stage('2. Preflight checks') {
+        stage('Skip CI Check') {
             steps {
                 script {
-                    def tools = [
-                        'java -version',
-                        'mvn -version',
-                        'node -v',
-                        'npm -v',
-                        'oras version',
-                        'az version'
-                    ]
+                    def lastMsg = bat(
+                        script: '@git log -1 --pretty=%%B',
+                        returnStdout: true
+                    ).trim()
 
-                    tools.each { cmd ->
-                        def status = bat(
-                            script: "@${cmd}",
-                            returnStatus: true
-                        )
-
-                        if (status != 0) {
-                            error "Preflight failed: '${cmd}' is not available on this agent."
-                        }
+                    if (lastMsg.contains('[skip ci]')) {
+                        currentBuild.result = 'NOT_BUILT'
+                        error("Skipping build: last commit is a release/tag commit -> ${lastMsg}")
                     }
                 }
             }
         }
 
-        stage('3. Build Backend') {
+        stage('Preflight') {
+            steps {
+                bat '''
+                    java -version
+                    mvn -version
+                    node -v
+                    npm -v
+                    az version
+                '''
+            }
+        }
+
+        stage('Determine Base Version') {
+            steps {
+                script {
+                    // Prefer the latest git tag as source of truth (avoids races / pom drift)
+                    def tagOutput = bat(
+                        script: '@git tag --sort=-v:refname --list "v*"',
+                        returnStdout: true
+                    ).trim()
+
+                    def latestTag = tagOutput ? tagOutput.readLines()[0].trim() : ''
+
+                    String baseVersion
+                    if (latestTag) {
+                        baseVersion = latestTag.replaceFirst('^v', '')
+                    } else {
+                        // Fall back to pom.xml version on the very first release
+                        def pomVersion = bat(
+                            script: '''
+                                mvn -f backend\\pom.xml help:evaluate ^
+                                -Dexpression=project.version ^
+                                -q -B ^
+                                -DforceStdout
+                            ''',
+                            returnStdout: true
+                        ).trim()
+                        baseVersion = pomVersion.readLines()[-1].trim().replace('-SNAPSHOT', '')
+                    }
+
+                    def parts = baseVersion.tokenize('.')
+                    if (parts.size() != 3) {
+                        error "Invalid base version format: ${baseVersion} (expected major.minor.patch)"
+                    }
+
+                    env.BASE_VERSION = baseVersion
+
+                    def major = parts[0].toInteger()
+                    def minor = parts[1].toInteger()
+                    def patch = parts[2].toInteger() + 1
+
+                    env.RELEASE_VERSION = "${major}.${minor}.${patch}"
+
+                    echo "Base version: ${env.BASE_VERSION}  ->  Candidate release: ${env.RELEASE_VERSION}"
+                }
+            }
+        }
+
+        stage('Check Version Not Already Released') {
+            steps {
+                script {
+                    def exists = bat(
+                        script: '''
+                            @az storage blob exists ^
+                            --account-name %AZ_STORAGE_ACCOUNT% ^
+                            --container-name %AZ_CONTAINER% ^
+                            --name %RELEASE_VERSION%/.marker ^
+                            --auth-mode login ^
+                            --query exists -o tsv
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+                    if (exists == 'true') {
+                        error "Version ${env.RELEASE_VERSION} already exists in blob storage. Aborting to avoid overwrite."
+                    }
+                }
+            }
+        }
+
+        stage('Build Backend') {
             steps {
                 bat '''
                     mvn -f backend\\pom.xml clean package -DskipTests -Dmaven.test.skip=true
                 '''
             }
+        }
 
-            post {
-                success {
-                    script {
-                        if (!fileExists('backend/target/naukri-be.jar')) {
-                            error 'Backend JAR was not generated.'
-                        }
+        stage('Verify Backend Artifact') {
+            steps {
+                powershell '''
+                    if (-not (Test-Path "$env:WORKSPACE\\backend\\target\\naukri-be.jar")) {
+                        throw "Backend JAR not found after build"
                     }
-                }
+                '''
             }
         }
 
-        stage('4. Build Frontend') {
+        stage('Build Frontend') {
             steps {
                 dir('frontend') {
                     bat 'npm ci'
                     bat 'npm run build'
                 }
             }
-
-            post {
-                success {
-                    script {
-                        if (!fileExists('frontend/dist/index.html')) {
-                            error 'Frontend build was not generated.'
-                        }
-                    }
-                }
-            }
         }
 
-        stage('5. Build Electron Application') {
+        stage('Build Electron') {
             steps {
                 powershell '''
                     & "$env:WORKSPACE\\build\\build.ps1" -Variant Ship
@@ -106,32 +173,55 @@ pipeline {
             }
         }
 
-        stage('6. Verify EXE') {
+        stage('Verify Electron Artifact') {
             steps {
                 powershell '''
-                    $dist = "$env:WORKSPACE\\dist"
-
-                    if (-not (Test-Path $dist)) {
-                        throw "dist directory does not exist."
-                    }
-
-                    $exeFiles = Get-ChildItem $dist -Filter "*.exe" -File
+                    $exeFiles = Get-ChildItem "$env:WORKSPACE\\dist" -Filter "*.exe" -File
 
                     if ($exeFiles.Count -eq 0) {
-                        throw "No EXE artifacts found."
-                    }
-
-                    Write-Host "===== EXE FILES ====="
-
-                    foreach ($exe in $exeFiles) {
-                        Write-Host $exe.FullName
-                        Write-Host "Size: $($exe.Length) bytes"
+                        throw "EXE not found after Electron build"
                     }
                 '''
             }
         }
 
-        stage('7. Azure Login') {
+        stage('Prepare Artifacts') {
+            steps {
+                powershell '''
+                    $releaseDir = "$env:WORKSPACE\\release-artifacts"
+
+                    if (Test-Path $releaseDir) {
+                        Remove-Item $releaseDir -Recurse -Force
+                    }
+
+                    New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+
+                    Copy-Item `
+                        "$env:WORKSPACE\\backend\\target\\naukri-be.jar" `
+                        "$releaseDir\\naukri-be-$env:RELEASE_VERSION.jar"
+
+                    $exeFiles = Get-ChildItem `
+                        "$env:WORKSPACE\\dist" `
+                        -Filter "*.exe" `
+                        -File
+
+                    foreach ($exe in $exeFiles) {
+                        $newName =
+                            [System.IO.Path]::GetFileNameWithoutExtension($exe.Name) +
+                            "-$env:RELEASE_VERSION.exe"
+
+                        Copy-Item `
+                            $exe.FullName `
+                            "$releaseDir\\$newName"
+                    }
+
+                    # marker file used by "Check Version Not Already Released" on future builds
+                    New-Item -ItemType File -Path "$releaseDir\\.marker" -Force | Out-Null
+                '''
+            }
+        }
+
+        stage('Azure Login') {
             steps {
                 withCredentials([
                     azureServicePrincipal(
@@ -144,9 +234,10 @@ pipeline {
                 ]) {
                     bat '''
                         az login --service-principal ^
-                          -u %AZ_CLIENT_ID% ^
-                          -p %AZ_CLIENT_SECRET% ^
-                          --tenant %AZ_TENANT_ID%
+                        -u %AZ_CLIENT_ID% ^
+                        -p %AZ_CLIENT_SECRET% ^
+                        --tenant %AZ_TENANT_ID% ^
+                        1>NUL
 
                         az account set --subscription %AZ_SUBSCRIPTION_ID%
                     '''
@@ -154,58 +245,96 @@ pipeline {
             }
         }
 
-        stage('8. ORAS Login to ACR') {
+        stage('Upload to Azure Blob') {
             steps {
                 bat '''
-                    for /f "usebackq tokens=*" %%t in (`az acr login --name naukribackendacr7291 --expose-token --output tsv --query accessToken`) do set BACKEND_TOKEN=%%t
+                    az storage container create ^
+                    --name %AZ_CONTAINER% ^
+                    --account-name %AZ_STORAGE_ACCOUNT% ^
+                    --auth-mode login ^
+                    1>NUL
 
-                    oras login naukribackendacr7291.azurecr.io ^
-                        -u 00000000-0000-0000-0000-000000000000 ^
-                        -p %BACKEND_TOKEN%
+                    az storage blob upload-batch ^
+                    --account-name %AZ_STORAGE_ACCOUNT% ^
+                    --destination %AZ_CONTAINER%/%RELEASE_VERSION% ^
+                    --source release-artifacts ^
+                    --auth-mode login
+                '''
+                // NOTE: no --overwrite. If this fails because blobs already exist,
+                // that's the safety net working as intended — investigate rather than force.
+            }
+        }
+
+        stage('Tag Release') {
+            steps {
+                bat '''
+                    git config user.name "Jenkins CI"
+                    git config user.email "jenkins@company.com"
+
+                    git tag -a v%RELEASE_VERSION% -m "chore: release v%RELEASE_VERSION% [skip ci]"
+                    git push origin v%RELEASE_VERSION%
                 '''
             }
         }
 
-        stage('9. Push Backend to ACR') {
-            steps {
-                bat "oras push ${BACKEND_ACR}/backend:${IMAGE_TAG} backend/target/naukri-be.jar"
-                bat "oras push ${BACKEND_ACR}/backend:latest backend/target/naukri-be.jar"
-            }
-        }
-
-        stage('10. Archive EXE') {
+        stage('Archive') {
             steps {
                 archiveArtifacts(
-                    artifacts: 'dist/*.exe',
+                    artifacts: 'release-artifacts/*',
                     fingerprint: true
-                )
-            }
-        }
-
-        stage('11. Upload EXE to Azure Blob') {
-            steps {
-                azureUpload(
-                    containerName: 'smcont',
-                    storageType: 'blobstorage',
-                    filesPath: 'dist/*.exe',
-                    storageCredentialId: 'azure-storage-cred'
                 )
             }
         }
     }
 
     post {
-        success {
-            echo "Build ${env.BUILD_NUMBER} succeeded. EXE generated, archived, uploaded to Blob, and backend pushed to ACR."
-        }
-
-        failure {
-            echo "Build ${env.BUILD_NUMBER} failed - check the first red stage above."
-        }
-
         always {
             bat 'az logout || exit 0'
             cleanWs()
+        }
+        success {
+            echo "Released version ${env.RELEASE_VERSION} (base was ${env.BASE_VERSION})"
+            emailext(
+                to: "${env.NOTIFY_EMAIL}",
+                subject: "SUCCESS: naukri-automator release v${env.RELEASE_VERSION} (build #${env.BUILD_NUMBER})",
+                body: """\
+Build succeeded and was released.
+
+Job:             ${env.JOB_NAME}
+Build number:    ${env.BUILD_NUMBER}
+Base version:    ${env.BASE_VERSION}
+Released version: ${env.RELEASE_VERSION}
+Blob path:       ${env.AZ_CONTAINER}/${env.RELEASE_VERSION}
+Build URL:       ${env.BUILD_URL}
+""",
+                mimeType: 'text/plain'
+            )
+        }
+        failure {
+            echo "Build failed before reaching a release. Base version ${env.BASE_VERSION} remains the next candidate."
+            emailext(
+                to: "${env.NOTIFY_EMAIL}",
+                subject: "FAILED: naukri-automator build #${env.BUILD_NUMBER}",
+                body: """\
+Build failed.
+
+Job:             ${env.JOB_NAME}
+Build number:    ${env.BUILD_NUMBER}
+Base version:    ${env.BASE_VERSION}
+Candidate version was: ${env.RELEASE_VERSION}
+Build URL:       ${env.BUILD_URL}
+Console log:     ${env.BUILD_URL}console
+""",
+                mimeType: 'text/plain'
+            )
+        }
+        unstable {
+            emailext(
+                to: "${env.NOTIFY_EMAIL}",
+                subject: "UNSTABLE: naukri-automator build #${env.BUILD_NUMBER}",
+                body: "Build marked unstable. See ${env.BUILD_URL}console for details.",
+                mimeType: 'text/plain'
+            )
         }
     }
 }
