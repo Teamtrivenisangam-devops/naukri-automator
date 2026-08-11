@@ -22,7 +22,20 @@ pipeline {
             )
         )
     }
+ tools {
+        jdk 'Java17'
+        maven 'Maven3'
+    }
 
+    stages 
+        stage('Verify Java') {
+            steps {
+                bat '''
+                    java -version
+                    mvn -version
+                '''
+            }
+        }
     environment {
 
         // =====================================================
@@ -46,7 +59,7 @@ pipeline {
     }
 
 
-    stages {
+    
 
 
         // =====================================================
@@ -1114,4 +1127,5 @@ pipeline {
             """
         }
     }
+}
 }
