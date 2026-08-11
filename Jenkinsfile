@@ -45,23 +45,18 @@ pipeline {
 
 
         // =====================================================
-        // BACKEND CONTAINER
+        // AZURE CONTAINERS
         // =====================================================
 
         AZ_BACKEND_CONTAINER =
             'naukribackend7291'
-
-
-        // =====================================================
-        // FRONTEND CONTAINER
-        // =====================================================
 
         AZ_FRONTEND_CONTAINER =
             'naukrifrontend7291'
 
 
         // =====================================================
-        // VERSION VARIABLES
+        // VERSION
         // =====================================================
 
         BASE_VERSION = ''
@@ -94,7 +89,7 @@ pipeline {
 
 
         // =====================================================
-        // 2. SKIP CI CHECK
+        // 2. SKIP CI
         // =====================================================
 
         stage('Skip CI Check') {
@@ -103,26 +98,21 @@ pipeline {
 
                 script {
 
-                    def lastMsg =
-                        bat(
-                            script:
-                                '@git log -1 --pretty=%%B',
+                    def lastMsg = bat(
+                        script:
+                            '@git log -1 --pretty=%%B',
+                        returnStdout: true
+                    ).trim()
 
-                            returnStdout: true
-                        ).trim()
-
-
-                    echo "Latest commit message:"
+                    echo "Latest commit:"
                     echo lastMsg
-
 
                     if (lastMsg.contains('[skip ci]')) {
 
-                        currentBuild.result =
-                            'NOT_BUILT'
+                        currentBuild.result = 'NOT_BUILT'
 
                         error(
-                            "Skipping build because commit contains [skip ci]"
+                            'Skipping build because commit contains [skip ci]'
                         )
                     }
                 }
@@ -144,13 +134,9 @@ pipeline {
                     echo ==========================================
 
                     java -version
-
                     mvn -version
-
                     node -v
-
                     npm -v
-
                     az version
                 '''
             }
@@ -158,36 +144,34 @@ pipeline {
 
 
         // =====================================================
-        // 4. DETERMINE MAVEN BASE VERSION
+        // 4. DETERMINE VERSION
         // =====================================================
 
-        stage('Determine Base Version') {
+        stage('Determine Release Version') {
 
             steps {
 
                 script {
 
-                    def pomVersion =
-                        bat(
-                            script:
-                                '''
-                                @mvn -f backend\\pom.xml help:evaluate ^
-                                -Dexpression=project.version ^
-                                -q -B -DforceStdout
-                                ''',
-
-                            returnStdout: true
-                        ).trim()
+                    def pomVersion = bat(
+                        script: '''
+                            @mvn -f backend\\pom.xml help:evaluate ^
+                            -Dexpression=project.version ^
+                            -q -B -DforceStdout
+                        ''',
+                        returnStdout: true
+                    ).trim()
 
 
-                    echo "Maven POM version: ${pomVersion}"
+                    echo "Maven POM version = [${pomVersion}]"
 
+
+                    // Remove SNAPSHOT
 
                     def baseVersion =
-                        pomVersion.replace(
-                            '-SNAPSHOT',
-                            ''
-                        )
+                        pomVersion
+                            .replace('-SNAPSHOT', '')
+                            .trim()
 
 
                     def parts =
@@ -197,8 +181,8 @@ pipeline {
                     if (parts.size() != 3) {
 
                         error(
-                            "Invalid Maven version: ${pomVersion}. " +
-                            "Expected major.minor.patch"
+                            "Invalid version '${pomVersion}'. " +
+                            "Expected format: major.minor.patch"
                         )
                     }
 
@@ -220,15 +204,15 @@ pipeline {
                     env.BASE_VERSION =
                         baseVersion
 
-
                     env.RELEASE_VERSION =
                         releaseVersion
 
 
                     echo "=========================================="
+                    echo "Maven Version   : ${pomVersion}"
                     echo "Base Version    : ${env.BASE_VERSION}"
                     echo "Release Version : ${env.RELEASE_VERSION}"
-                    echo "Jenkins Build   : ${env.BUILD_NUMBER}"
+                    echo "Build Number    : ${env.BUILD_NUMBER}"
                     echo "=========================================="
                 }
             }
@@ -236,26 +220,49 @@ pipeline {
 
 
         // =====================================================
-        // 5. SET RELEASE VERSION
+        // 5. VERIFY VERSION
+        // =====================================================
+
+        stage('Verify Release Version') {
+
+            steps {
+
+                script {
+
+                    if (!env.RELEASE_VERSION?.trim()) {
+
+                        error(
+                            'RELEASE_VERSION is empty. Stopping pipeline.'
+                        )
+                    }
+
+                    echo "Release version confirmed: ${env.RELEASE_VERSION}"
+                }
+            }
+        }
+
+
+        // =====================================================
+        // 6. SET RELEASE VERSION
         // =====================================================
 
         stage('Set Release Version') {
 
             steps {
 
-                bat '''
-                    echo Setting Maven release version...
+                bat """
+                    echo Setting Maven version to ${env.RELEASE_VERSION}
 
                     mvn -f backend\\pom.xml versions:set ^
-                        -DnewVersion=%RELEASE_VERSION% ^
+                        -DnewVersion=${env.RELEASE_VERSION} ^
                         -DgenerateBackupPoms=false
-                '''
+                """
             }
         }
 
 
         // =====================================================
-        // 6. BUILD BACKEND
+        // 7. BUILD BACKEND
         // =====================================================
 
         stage('Build Backend') {
@@ -264,7 +271,7 @@ pipeline {
 
                 bat '''
                     echo ==========================================
-                    echo BUILD BACKEND
+                    echo BUILDING BACKEND
                     echo ==========================================
 
                     mvn -f backend\\pom.xml clean package ^
@@ -276,7 +283,7 @@ pipeline {
 
 
         // =====================================================
-        // 7. VERIFY BACKEND
+        // 8. VERIFY BACKEND
         // =====================================================
 
         stage('Verify Backend Artifact') {
@@ -285,25 +292,25 @@ pipeline {
 
                 powershell '''
 
-                    $jarPath =
+                    $jar =
                         "$env:WORKSPACE\\backend\\target\\naukri-be.jar"
 
 
-                    if (-not (Test-Path $jarPath)) {
+                    if (-not (Test-Path $jar)) {
 
-                        throw "Backend JAR not found: $jarPath"
+                        throw "Backend JAR not found: $jar"
                     }
 
 
                     Write-Host "Backend JAR found:"
-                    Write-Host $jarPath
+                    Write-Host $jar
                 '''
             }
         }
 
 
         // =====================================================
-        // 8. BUILD FRONTEND
+        // 9. BUILD FRONTEND
         // =====================================================
 
         stage('Build Frontend') {
@@ -314,7 +321,7 @@ pipeline {
 
                     bat '''
                         echo ==========================================
-                        echo BUILD FRONTEND
+                        echo BUILDING FRONTEND
                         echo ==========================================
 
                         npm ci
@@ -327,7 +334,7 @@ pipeline {
 
 
         // =====================================================
-        // 9. BUILD ELECTRON
+        // 10. BUILD ELECTRON
         // =====================================================
 
         stage('Build Electron') {
@@ -337,7 +344,7 @@ pipeline {
                 powershell '''
 
                     Write-Host "=========================================="
-                    Write-Host "BUILD ELECTRON"
+                    Write-Host "BUILDING ELECTRON"
                     Write-Host "=========================================="
 
 
@@ -366,155 +373,150 @@ pipeline {
                     }
 
 
-                    Write-Host "Electron EXE found."
+                    Write-Host "Electron build successful."
                 '''
             }
         }
 
 
         // =====================================================
-        // 10. PREPARE ARTIFACTS
+        // 11. PREPARE ARTIFACTS
         // =====================================================
 
         stage('Prepare Artifacts') {
 
             steps {
 
-                powershell '''
+                powershell """
 
-                    $releaseDir =
-                        "$env:WORKSPACE\\release-artifacts"
+                    \$releaseDir =
+                        "\$env:WORKSPACE\\release-artifacts"
 
+                    \$backendDir =
+                        "\$releaseDir\\backend"
 
-                    $backendDir =
-                        "$releaseDir\\backend"
-
-
-                    $frontendDir =
-                        "$releaseDir\\frontend"
+                    \$frontendDir =
+                        "\$releaseDir\\frontend"
 
 
-                    # ------------------------------------------
-                    # CLEAN
-                    # ------------------------------------------
-
-                    if (Test-Path $releaseDir) {
+                    if (Test-Path \$releaseDir) {
 
                         Remove-Item `
-                            $releaseDir `
+                            \$releaseDir `
                             -Recurse `
                             -Force
                     }
 
 
-                    # ------------------------------------------
-                    # CREATE DIRECTORIES
-                    # ------------------------------------------
-
                     New-Item `
                         -ItemType Directory `
-                        -Path $backendDir `
+                        -Path \$backendDir `
                         -Force |
                         Out-Null
 
 
                     New-Item `
                         -ItemType Directory `
-                        -Path $frontendDir `
+                        -Path \$frontendDir `
                         -Force |
                         Out-Null
 
 
                     # ==========================================
-                    # BACKEND JAR
+                    # BACKEND
                     # ==========================================
 
-                    $jarPath =
-                        "$env:WORKSPACE\\backend\\target\\naukri-be.jar"
+                    \$jar =
+                        "\$env:WORKSPACE\\backend\\target\\naukri-be.jar"
 
 
                     Copy-Item `
-                        $jarPath `
-                        "$backendDir\\naukri-be-$env:RELEASE_VERSION.jar" `
+                        \$jar `
+                        "\$backendDir\\naukri-be-${env.RELEASE_VERSION}.jar" `
                         -Force
 
 
                     # ==========================================
-                    # FRONTEND
+                    # FRONTEND WEB
                     # ==========================================
 
-                    $frontendBuild =
-                        "$env:WORKSPACE\\frontend\\dist"
+                    \$frontendBuild =
+                        "\$env:WORKSPACE\\frontend\\dist"
 
 
-                    if (Test-Path $frontendBuild) {
+                    if (-not (Test-Path \$frontendBuild)) {
 
-                        New-Item `
-                            -ItemType Directory `
-                            -Path "$frontendDir\\web" `
-                            -Force |
-                            Out-Null
-
-
-                        Copy-Item `
-                            "$frontendBuild\\*" `
-                            "$frontendDir\\web" `
-                            -Recurse `
-                            -Force
+                        throw "Frontend dist directory not found"
                     }
+
+
+                    New-Item `
+                        -ItemType Directory `
+                        -Path "\$frontendDir\\web" `
+                        -Force |
+                        Out-Null
+
+
+                    Copy-Item `
+                        "\$frontendBuild\\*" `
+                        "\$frontendDir\\web" `
+                        -Recurse `
+                        -Force
 
 
                     # ==========================================
                     # ELECTRON
                     # ==========================================
 
-                    $exeFiles =
-                        Get-ChildItem `
-                        "$env:WORKSPACE\\dist" `
-                        -Filter "*.exe" `
-                        -File
+                    \$electronDir =
+                        "\$frontendDir\\electron"
 
 
                     New-Item `
                         -ItemType Directory `
-                        -Path "$frontendDir\\electron" `
+                        -Path \$electronDir `
                         -Force |
                         Out-Null
 
 
-                    $exeFiles |
-                        ForEach-Object {
-
-                            $newName =
-                                [System.IO.Path]::GetFileNameWithoutExtension(
-                                    $_.Name
-                                ) +
-                                "-$env:RELEASE_VERSION.exe"
+                    \$exeFiles =
+                        Get-ChildItem `
+                        "\$env:WORKSPACE\\dist" `
+                        -Filter "*.exe" `
+                        -File
 
 
-                            Copy-Item `
-                                $_.FullName `
-                                "$frontendDir\\electron\\$newName" `
-                                -Force
-                        }
+                    foreach (\$exe in \$exeFiles) {
+
+                        \$newName =
+                            [System.IO.Path]::GetFileNameWithoutExtension(
+                                \$exe.Name
+                            ) +
+                            "-${env.RELEASE_VERSION}.exe"
 
 
-                    Write-Host ""
+                        Copy-Item `
+                            \$exe.FullName `
+                            "\$electronDir\\\$newName" `
+                            -Force
+                    }
+
+
                     Write-Host "=========================================="
                     Write-Host "ARTIFACTS READY"
                     Write-Host "=========================================="
 
 
                     Get-ChildItem `
-                        $releaseDir `
+                        \$releaseDir `
                         -Recurse
-                '''
+                """
             }
         }
 
 
         // =====================================================
-        // 11. AZURE LOGIN
+        // 12. AZURE LOGIN
         // =====================================================
 
         stage('Azure Login') {
@@ -573,10 +575,10 @@ pipeline {
 
 
         // =====================================================
-        // 12. VERIFY CONTAINERS
+        // 13. VERIFY STORAGE
         // =====================================================
 
-        stage('Verify Azure Storage Access') {
+        stage('Verify Azure Storage') {
 
             steps {
 
@@ -588,8 +590,8 @@ pipeline {
 
 
                     az storage container show ^
-                        --name %AZ_BACKEND_CONTAINER% ^
-                        --account-name %AZ_STORAGE_ACCOUNT% ^
+                        --account-name "%AZ_STORAGE_ACCOUNT%" ^
+                        --name "%AZ_BACKEND_CONTAINER%" ^
                         --auth-mode login ^
                         -o table
 
@@ -603,8 +605,8 @@ pipeline {
 
 
                     az storage container show ^
-                        --name %AZ_FRONTEND_CONTAINER% ^
-                        --account-name %AZ_STORAGE_ACCOUNT% ^
+                        --account-name "%AZ_STORAGE_ACCOUNT%" ^
+                        --name "%AZ_FRONTEND_CONTAINER%" ^
                         --auth-mode login ^
                         -o table
 
@@ -613,7 +615,7 @@ pipeline {
 
 
                     echo ==========================================
-                    echo BOTH CONTAINERS ARE ACCESSIBLE
+                    echo STORAGE ACCESS SUCCESSFUL
                     echo ==========================================
                 '''
             }
@@ -621,110 +623,128 @@ pipeline {
 
 
         // =====================================================
-        // 13. UPLOAD BACKEND
+        // 14. UPLOAD BACKEND
         // =====================================================
 
         stage('Upload Backend') {
 
             steps {
 
-                bat '''
+                /*
+                 * IMPORTANT:
+                 * Groovy inserts RELEASE_VERSION directly.
+                 * This avoids the previous empty %RELEASE_VERSION%
+                 * problem.
+                 */
 
+                bat """
                     echo ==========================================
                     echo UPLOADING BACKEND
                     echo ==========================================
 
+                    echo Storage Account : ${env.AZ_STORAGE_ACCOUNT}
+                    echo Container       : ${env.AZ_BACKEND_CONTAINER}
+                    echo Version         : ${env.RELEASE_VERSION}
 
                     az storage blob upload-batch ^
-                        --account-name %AZ_STORAGE_ACCOUNT% ^
-                        --destination %AZ_BACKEND_CONTAINER% ^
-                        --source release-artifacts\\backend ^
-                        --destination-path %RELEASE_VERSION% ^
+                        --account-name "${env.AZ_STORAGE_ACCOUNT}" ^
+                        --destination "${env.AZ_BACKEND_CONTAINER}" ^
+                        --source "release-artifacts\\backend" ^
+                        --destination-path "${env.RELEASE_VERSION}" ^
                         --auth-mode login
 
+                    if %ERRORLEVEL% NEQ 0 (
+                        echo Backend upload FAILED
+                        exit /b %ERRORLEVEL%
+                    )
 
-                    if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
-
-
-                    echo Backend upload successful.
-                '''
+                    echo ==========================================
+                    echo BACKEND UPLOAD SUCCESSFUL
+                    echo ==========================================
+                """
             }
         }
 
 
         // =====================================================
-        // 14. UPLOAD FRONTEND
+        // 15. UPLOAD FRONTEND
         // =====================================================
 
         stage('Upload Frontend') {
 
             steps {
 
-                bat '''
+                bat """
 
                     echo ==========================================
                     echo UPLOADING FRONTEND
                     echo ==========================================
 
+                    echo Storage Account : ${env.AZ_STORAGE_ACCOUNT}
+                    echo Container       : ${env.AZ_FRONTEND_CONTAINER}
+                    echo Version         : ${env.RELEASE_VERSION}
+
 
                     az storage blob upload-batch ^
-                        --account-name %AZ_STORAGE_ACCOUNT% ^
-                        --destination %AZ_FRONTEND_CONTAINER% ^
-                        --source release-artifacts\\frontend ^
-                        --destination-path %RELEASE_VERSION% ^
+                        --account-name "${env.AZ_STORAGE_ACCOUNT}" ^
+                        --destination "${env.AZ_FRONTEND_CONTAINER}" ^
+                        --source "release-artifacts\\frontend" ^
+                        --destination-path "${env.RELEASE_VERSION}" ^
                         --auth-mode login
 
 
-                    if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+                    if %ERRORLEVEL% NEQ 0 (
+                        echo Frontend upload FAILED
+                        exit /b %ERRORLEVEL%
+                    )
 
 
-                    echo Frontend upload successful.
-                '''
+                    echo ==========================================
+                    echo FRONTEND UPLOAD SUCCESSFUL
+                    echo ==========================================
+                """
             }
         }
 
 
         // =====================================================
-        // 15. VERIFY UPLOAD
+        // 16. VERIFY UPLOAD
         // =====================================================
 
         stage('Verify Upload') {
 
             steps {
 
-                bat '''
+                bat """
 
                     echo ==========================================
-                    echo BACKEND ARTIFACTS
+                    echo VERIFYING UPLOAD
                     echo ==========================================
 
 
+                    echo BACKEND:
                     az storage blob list ^
-                        --account-name %AZ_STORAGE_ACCOUNT% ^
-                        --container-name %AZ_BACKEND_CONTAINER% ^
-                        --prefix %RELEASE_VERSION% ^
+                        --account-name "${env.AZ_STORAGE_ACCOUNT}" ^
+                        --container-name "${env.AZ_BACKEND_CONTAINER}" ^
+                        --prefix "${env.RELEASE_VERSION}/" ^
                         --auth-mode login ^
                         -o table
 
 
-                    echo ==========================================
-                    echo FRONTEND ARTIFACTS
-                    echo ==========================================
-
-
+                    echo FRONTEND:
                     az storage blob list ^
-                        --account-name %AZ_STORAGE_ACCOUNT% ^
-                        --container-name %AZ_FRONTEND_CONTAINER% ^
-                        --prefix %RELEASE_VERSION% ^
+                        --account-name "${env.AZ_STORAGE_ACCOUNT}" ^
+                        --container-name "${env.AZ_FRONTEND_CONTAINER}" ^
+                        --prefix "${env.RELEASE_VERSION}/" ^
                         --auth-mode login ^
                         -o table
-                '''
+                """
             }
         }
 
 
         // =====================================================
-        // 16. TAG RELEASE
+        // 17. CREATE GIT TAG
         // =====================================================
 
         stage('Tag Release') {
@@ -744,10 +764,10 @@ pipeline {
 
                 ]) {
 
-                    bat '''
+                    bat """
 
                         echo ==========================================
-                        echo TAGGING RELEASE
+                        echo CREATING RELEASE TAG
                         echo ==========================================
 
 
@@ -757,20 +777,20 @@ pipeline {
 
 
                         git tag -a ^
-                            v%RELEASE_VERSION% ^
-                            -m "Release v%RELEASE_VERSION% [skip ci]"
+                            v${env.RELEASE_VERSION} ^
+                            -m "Release v${env.RELEASE_VERSION} [skip ci]"
 
 
                         git push origin ^
-                            v%RELEASE_VERSION%
-                    '''
+                            v${env.RELEASE_VERSION}
+                    """
                 }
             }
         }
 
 
         // =====================================================
-        // 17. PREPARE NEXT SNAPSHOT
+        // 18. UPDATE NEXT SNAPSHOT VERSION
         // =====================================================
 
         stage('Prepare Next Snapshot') {
@@ -790,15 +810,15 @@ pipeline {
 
                 ]) {
 
-                    bat '''
+                    bat """
 
                         echo ==========================================
-                        echo PREPARING NEXT VERSION
+                        echo PREPARING NEXT SNAPSHOT
                         echo ==========================================
 
 
                         mvn -f backend\\pom.xml versions:set ^
-                            -DnewVersion=%RELEASE_VERSION%-SNAPSHOT ^
+                            -DnewVersion=${env.RELEASE_VERSION}-SNAPSHOT ^
                             -DgenerateBackupPoms=false
 
 
@@ -811,18 +831,18 @@ pipeline {
 
 
                         git commit ^
-                            -m "chore: prepare next development version %RELEASE_VERSION%-SNAPSHOT [skip ci]"
+                            -m "chore: prepare next version ${env.RELEASE_VERSION}-SNAPSHOT [skip ci]"
 
 
                         git push origin main
-                    '''
+                    """
                 }
             }
         }
 
 
         // =====================================================
-        // 18. ARCHIVE
+        // 19. ARCHIVE
         // =====================================================
 
         stage('Archive') {
@@ -861,7 +881,7 @@ pipeline {
 
             echo """
             ==========================================
-                 RELEASE SUCCESSFUL
+                  RELEASE SUCCESSFUL
             ==========================================
 
             Jenkins Build:
@@ -900,11 +920,8 @@ pipeline {
             Base Version:
             ${env.BASE_VERSION}
 
-            Candidate Version:
+            Release Version:
             ${env.RELEASE_VERSION}
-
-            Maven version will not be advanced
-            if the release process fails.
 
             ==========================================
             """
