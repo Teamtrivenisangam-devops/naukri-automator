@@ -27,10 +27,7 @@ pipeline {
      * Jenkins itself can run on Java 21.
      * The project build uses the Jenkins-configured Java17 tool.
      */
-    tools {
-        jdk 'Java17'
-        maven 'Maven3'
-    }
+   
 
     environment {
 
