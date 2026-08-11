@@ -10,7 +10,7 @@ Set-StrictMode -Version Latest
 
 Write-Host '==== install-playwright ===='
 
-$env:JAVA_HOME = 'C:\Users\e182114\.jdks\azul-17.0.10'
+$env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-17.0.17.10-hotspot'
 $root           = Split-Path -Parent $PSScriptRoot
 $playwrightDir  = Join-Path $root 'electron\resources\playwright'
 
@@ -30,6 +30,9 @@ if (-not (Test-Path $playwrightDir)) {
 $env:PLAYWRIGHT_BROWSERS_PATH = $playwrightDir
 Write-Host "PLAYWRIGHT_BROWSERS_PATH : $($env:PLAYWRIGHT_BROWSERS_PATH)"
 
+Write-Host "DEBUG: JAVA_HOME = '$env:JAVA_HOME'"
+Write-Host "DEBUG: java.exe exists? $(Test-Path "$env:JAVA_HOME\bin\java.exe")"
+Write-Host "DEBUG: PATH = $env:PATH"
 $pomPath = Join-Path $root 'backend\pom.xml'
 Write-Host "Running   : mvn exec:java (Playwright CLI install chromium)"
 # Use array so PowerShell doesn't parse -Dexec.* as named parameters
@@ -49,3 +52,4 @@ if (-not $chromePaths) {
 }
 Write-Host "Chromium installed at $playwrightDir"
 Write-Host '==== install-playwright DONE ===='
+
