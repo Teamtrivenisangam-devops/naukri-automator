@@ -1,3 +1,4 @@
+```groovy
 pipeline {
 
     agent any
@@ -22,20 +23,16 @@ pipeline {
             )
         )
     }
- tools {
+
+    /*
+     * Jenkins itself can run on Java 21.
+     * The project build uses the Jenkins-configured Java17 tool.
+     */
+    tools {
         jdk 'Java17'
         maven 'Maven3'
     }
 
-    stages 
-        stage('Verify Java') {
-            steps {
-                bat '''
-                    java -version
-                    mvn -version
-                '''
-            }
-        }
     environment {
 
         // =====================================================
@@ -43,7 +40,6 @@ pipeline {
         // =====================================================
 
         JAVA_HOME = 'C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot'
-
         PATH = "${JAVA_HOME}\\bin;${env.PATH}"
 
 
@@ -59,11 +55,31 @@ pipeline {
     }
 
 
-    
+    stages {
+
+        // =====================================================
+        // 1. VERIFY JAVA
+        // =====================================================
+
+        stage('Verify Java') {
+
+            steps {
+
+                bat '''
+                    echo ==========================================
+                    echo VERIFY JAVA AND MAVEN
+                    echo ==========================================
+
+                    java -version
+
+                    mvn -version
+                '''
+            }
+        }
 
 
         // =====================================================
-        // 1. CHECKOUT
+        // 2. CHECKOUT
         // =====================================================
 
         stage('Checkout') {
@@ -82,7 +98,7 @@ pipeline {
 
 
         // =====================================================
-        // 2. SKIP CI CHECK
+        // 3. SKIP CI CHECK
         // =====================================================
 
         stage('Skip CI Check') {
@@ -115,7 +131,7 @@ pipeline {
 
 
         // =====================================================
-        // 3. PREFLIGHT
+        // 4. PREFLIGHT
         // =====================================================
 
         stage('Preflight') {
@@ -142,7 +158,7 @@ pipeline {
 
 
         // =====================================================
-        // 4. DETERMINE VERSION
+        // 5. DETERMINE RELEASE VERSION
         // =====================================================
 
         stage('Determine Release Version') {
@@ -164,6 +180,7 @@ pipeline {
                     echo "=========================================="
                     echo "MAVEN VERSION"
                     echo "=========================================="
+
                     echo "POM Version: ${pomVersion}"
 
 
@@ -217,18 +234,19 @@ pipeline {
 
                     writeFile(
                         file: 'base-version.txt',
+
                         text: baseVersion
                     )
 
 
                     writeFile(
                         file: 'release-version.txt',
+
                         text: releaseVersion
                     )
 
 
-                    // Also expose as environment variables
-                    // for normal full pipeline execution.
+                    // Expose as environment variables
 
                     env.BASE_VERSION =
                         baseVersion
@@ -246,7 +264,7 @@ pipeline {
 
 
         // =====================================================
-        // 5. VERIFY VERSION
+        // 6. VERIFY RELEASE VERSION
         // =====================================================
 
         stage('Verify Release Version') {
@@ -302,8 +320,11 @@ pipeline {
                     echo "=========================================="
                     echo "VERSION VERIFIED"
                     echo "=========================================="
+
                     echo "Base Version    : ${baseVersion}"
+
                     echo "Release Version : ${releaseVersion}"
+
                     echo "=========================================="
                 }
             }
@@ -311,7 +332,7 @@ pipeline {
 
 
         // =====================================================
-        // 6. SET RELEASE VERSION
+        // 7. SET RELEASE VERSION
         // =====================================================
 
         stage('Set Release Version') {
@@ -343,7 +364,7 @@ pipeline {
 
 
         // =====================================================
-        // 7. BUILD BACKEND
+        // 8. BUILD BACKEND
         // =====================================================
 
         stage('Build Backend') {
@@ -364,7 +385,7 @@ pipeline {
 
 
         // =====================================================
-        // 8. VERIFY BACKEND
+        // 9. VERIFY BACKEND ARTIFACT
         // =====================================================
 
         stage('Verify Backend Artifact') {
@@ -384,6 +405,7 @@ pipeline {
 
 
                     Write-Host "Backend JAR found:"
+
                     Write-Host $jar
                 '''
             }
@@ -391,7 +413,7 @@ pipeline {
 
 
         // =====================================================
-        // 9. BUILD FRONTEND
+        // 10. BUILD FRONTEND
         // =====================================================
 
         stage('Build Frontend') {
@@ -415,7 +437,7 @@ pipeline {
 
 
         // =====================================================
-        // 10. BUILD ELECTRON
+        // 11. BUILD ELECTRON
         // =====================================================
 
         stage('Build Electron') {
@@ -425,7 +447,9 @@ pipeline {
                 powershell '''
 
                     Write-Host "=========================================="
+
                     Write-Host "BUILD ELECTRON"
+
                     Write-Host "=========================================="
 
 
@@ -461,7 +485,7 @@ pipeline {
 
 
         // =====================================================
-        // 11. PREPARE ARTIFACTS
+        // 12. PREPARE ARTIFACTS
         // =====================================================
 
         stage('Prepare Artifacts') {
@@ -478,26 +502,26 @@ pipeline {
 
                     powershell """
 
-                        \$releaseDir =
-                            "\$env:WORKSPACE\\release-artifacts"
+                        \\$releaseDir =
+                            "\\$env:WORKSPACE\\release-artifacts"
 
 
-                        \$backendDir =
-                            "\$releaseDir\\backend"
+                        \\$backendDir =
+                            "\\$releaseDir\\backend"
 
 
-                        \$frontendDir =
-                            "\$releaseDir\\frontend"
+                        \\$frontendDir =
+                            "\\$releaseDir\\frontend"
 
 
                         # ==========================================
                         # CLEAN
                         # ==========================================
 
-                        if (Test-Path \$releaseDir) {
+                        if (Test-Path \\$releaseDir) {
 
                             Remove-Item `
-                                \$releaseDir `
+                                \\$releaseDir `
                                 -Recurse `
                                 -Force
                         }
@@ -509,14 +533,14 @@ pipeline {
 
                         New-Item `
                             -ItemType Directory `
-                            -Path \$backendDir `
+                            -Path \\$backendDir `
                             -Force |
                             Out-Null
 
 
                         New-Item `
                             -ItemType Directory `
-                            -Path \$frontendDir `
+                            -Path \\$frontendDir `
                             -Force |
                             Out-Null
 
@@ -525,19 +549,19 @@ pipeline {
                         # BACKEND
                         # ==========================================
 
-                        \$jar =
-                            "\$env:WORKSPACE\\backend\\target\\naukri-be.jar"
+                        \\$jar =
+                            "\\$env:WORKSPACE\\backend\\target\\naukri-be.jar"
 
 
-                        if (-not (Test-Path \$jar)) {
+                        if (-not (Test-Path \\$jar)) {
 
                             throw "Backend JAR not found"
                         }
 
 
                         Copy-Item `
-                            \$jar `
-                            "\$backendDir\\naukri-be-${releaseVersion}.jar" `
+                            \\$jar `
+                            "\\$backendDir\\naukri-be-${releaseVersion}.jar" `
                             -Force
 
 
@@ -545,11 +569,11 @@ pipeline {
                         # FRONTEND WEB
                         # ==========================================
 
-                        \$frontendBuild =
-                            "\$env:WORKSPACE\\frontend\\dist"
+                        \\$frontendBuild =
+                            "\\$env:WORKSPACE\\frontend\\dist"
 
 
-                        if (-not (Test-Path \$frontendBuild)) {
+                        if (-not (Test-Path \\$frontendBuild)) {
 
                             throw "Frontend dist directory not found"
                         }
@@ -557,14 +581,14 @@ pipeline {
 
                         New-Item `
                             -ItemType Directory `
-                            -Path "\$frontendDir\\web" `
+                            -Path "\\$frontendDir\\web" `
                             -Force |
                             Out-Null
 
 
                         Copy-Item `
-                            "\$frontendBuild\\*" `
-                            "\$frontendDir\\web" `
+                            "\\$frontendBuild\\*" `
+                            "\\$frontendDir\\web" `
                             -Recurse `
                             -Force
 
@@ -573,47 +597,49 @@ pipeline {
                         # ELECTRON
                         # ==========================================
 
-                        \$electronDir =
-                            "\$frontendDir\\electron"
+                        \\$electronDir =
+                            "\\$frontendDir\\electron"
 
 
                         New-Item `
                             -ItemType Directory `
-                            -Path \$electronDir `
+                            -Path \\$electronDir `
                             -Force |
                             Out-Null
 
 
-                        \$exeFiles =
+                        \\$exeFiles =
                             Get-ChildItem `
-                            "\$env:WORKSPACE\\dist" `
+                            "\\$env:WORKSPACE\\dist" `
                             -Filter "*.exe" `
                             -File
 
 
-                        foreach (\$exe in \$exeFiles) {
+                        foreach (\\$exe in \\$exeFiles) {
 
-                            \$newName =
+                            \\$newName =
                                 [System.IO.Path]::GetFileNameWithoutExtension(
-                                    \$exe.Name
+                                    \\$exe.Name
                                 ) +
                                 "-${releaseVersion}.exe"
 
 
                             Copy-Item `
-                                \$exe.FullName `
-                                "\$electronDir\\\$newName" `
+                                \\$exe.FullName `
+                                "\\$electronDir\\\$newName" `
                                 -Force
                         }
 
 
                         Write-Host "=========================================="
+
                         Write-Host "ARTIFACTS READY"
+
                         Write-Host "=========================================="
 
 
                         Get-ChildItem `
-                            \$releaseDir `
+                            \\$releaseDir `
                             -Recurse
                     """
                 }
@@ -622,7 +648,7 @@ pipeline {
 
 
         // =====================================================
-        // 12. AZURE LOGIN
+        // 13. AZURE LOGIN
         // =====================================================
 
         stage('Azure Login') {
@@ -686,7 +712,7 @@ pipeline {
 
 
         // =====================================================
-        // 13. VERIFY STORAGE
+        // 14. VERIFY AZURE STORAGE
         // =====================================================
 
         stage('Verify Azure Storage Access') {
@@ -744,7 +770,7 @@ pipeline {
 
 
         // =====================================================
-        // 14. UPLOAD BACKEND
+        // 15. UPLOAD BACKEND
         // =====================================================
 
         stage('Upload Backend') {
@@ -804,7 +830,7 @@ pipeline {
 
 
         // =====================================================
-        // 15. UPLOAD FRONTEND
+        // 16. UPLOAD FRONTEND
         // =====================================================
 
         stage('Upload Frontend') {
@@ -864,7 +890,7 @@ pipeline {
 
 
         // =====================================================
-        // 16. VERIFY UPLOAD
+        // 17. VERIFY UPLOAD
         // =====================================================
 
         stage('Verify Upload') {
@@ -912,7 +938,7 @@ pipeline {
 
 
         // =====================================================
-        // 17. GIT TAG
+        // 18. GIT TAG
         // =====================================================
 
         stage('Tag Release') {
@@ -967,7 +993,7 @@ pipeline {
 
 
         // =====================================================
-        // 18. PREPARE NEXT SNAPSHOT
+        // 19. PREPARE NEXT SNAPSHOT
         // =====================================================
 
         stage('Prepare Next Snapshot') {
@@ -1036,7 +1062,7 @@ pipeline {
 
 
         // =====================================================
-        // 19. ARCHIVE
+        // 20. ARCHIVE
         // =====================================================
 
         stage('Archive') {
@@ -1066,6 +1092,7 @@ pipeline {
             bat '''
                 az logout || exit 0
             '''
+
 
             cleanWs(
                 deleteDirs: true,
@@ -1128,4 +1155,4 @@ pipeline {
         }
     }
 }
-
+```
