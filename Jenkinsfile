@@ -20,11 +20,15 @@ pipeline {
 
     stages {
 
-        stage('Checkout') {
-            steps {
-                git branch: 'main', url: 'https://github.com/Teamtrivenisangam-devops/naukri-automator.git'
-            }
-        }
+       stage('Checkout') {
+    steps {
+        git(
+            branch: 'main',
+            url: 'https://github.com/Teamtrivenisangam-devops/naukri-automator.git',
+            credentialsId: 'github-credentials'
+        )
+    }
+}
 
         stage('Skip CI Check') {
             steps {
