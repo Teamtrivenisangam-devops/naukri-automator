@@ -37,25 +37,27 @@ pipeline {
 
 
         // =====================================================
-        // AZURE BACKEND STORAGE
+        // AZURE STORAGE ACCOUNT
         // =====================================================
 
-        AZ_BACKEND_STORAGE =
-            'naukribackend7291'
+        AZ_STORAGE_ACCOUNT =
+            'naukristorage7291'
+
+
+        // =====================================================
+        // BACKEND CONTAINER
+        // =====================================================
 
         AZ_BACKEND_CONTAINER =
-            'backend'
+            'naukribackend7291'
 
 
         // =====================================================
-        // AZURE FRONTEND STORAGE
+        // FRONTEND CONTAINER
         // =====================================================
-
-        AZ_FRONTEND_STORAGE =
-            'naukrifrontend7291'
 
         AZ_FRONTEND_CONTAINER =
-            'frontend'
+            'naukrifrontend7291'
 
 
         // =====================================================
@@ -107,8 +109,7 @@ pipeline {
                                 '@git log -1 --pretty=%%B',
 
                             returnStdout: true
-                        )
-                        .trim()
+                        ).trim()
 
 
                     echo "Latest commit message:"
@@ -139,27 +140,17 @@ pipeline {
 
                 bat '''
                     echo ==========================================
-                    echo PREFLIGHT CHECK
+                    echo PREFLIGHT
                     echo ==========================================
 
-                    echo.
-                    echo Java Version
                     java -version
 
-                    echo.
-                    echo Maven Version
                     mvn -version
 
-                    echo.
-                    echo Node Version
                     node -v
 
-                    echo.
-                    echo npm Version
                     npm -v
 
-                    echo.
-                    echo Azure CLI Version
                     az version
                 '''
             }
@@ -167,17 +158,7 @@ pipeline {
 
 
         // =====================================================
-        // 4. DETERMINE BASE VERSION
-        // =====================================================
-        //
-        // Example:
-        //
-        // pom.xml
-        // 0.0.1-SNAPSHOT
-        //
-        // Base     = 0.0.1
-        // Release  = 0.0.2
-        //
+        // 4. DETERMINE MAVEN BASE VERSION
         // =====================================================
 
         stage('Determine Base Version') {
@@ -196,11 +177,10 @@ pipeline {
                                 ''',
 
                             returnStdout: true
-                        )
-                        .trim()
+                        ).trim()
 
 
-                    echo "Maven POM Version: ${pomVersion}"
+                    echo "Maven POM version: ${pomVersion}"
 
 
                     def baseVersion =
@@ -218,7 +198,7 @@ pipeline {
 
                         error(
                             "Invalid Maven version: ${pomVersion}. " +
-                            "Expected format: major.minor.patch"
+                            "Expected major.minor.patch"
                         )
                     }
 
@@ -258,38 +238,17 @@ pipeline {
         // =====================================================
         // 5. SET RELEASE VERSION
         // =====================================================
-        //
-        // Example:
-        //
-        // 0.0.1-SNAPSHOT
-        //
-        // becomes temporarily:
-        //
-        // 0.0.2
-        //
-        // This makes the generated JAR version 0.0.2.
-        //
-        // =====================================================
 
         stage('Set Release Version') {
 
             steps {
 
                 bat '''
-                    echo ==========================================
-                    echo SETTING RELEASE VERSION
-                    echo ==========================================
+                    echo Setting Maven release version...
 
                     mvn -f backend\\pom.xml versions:set ^
                         -DnewVersion=%RELEASE_VERSION% ^
                         -DgenerateBackupPoms=false
-
-                    echo.
-                    echo Verifying version...
-
-                    mvn -f backend\\pom.xml help:evaluate ^
-                        -Dexpression=project.version ^
-                        -q -B -DforceStdout
                 '''
             }
         }
@@ -336,7 +295,7 @@ pipeline {
                     }
 
 
-                    Write-Host "Backend artifact found:"
+                    Write-Host "Backend JAR found:"
                     Write-Host $jarPath
                 '''
             }
@@ -403,18 +362,11 @@ pipeline {
 
                     if ($exeFiles.Count -eq 0) {
 
-                        throw "Electron EXE was not generated"
+                        throw "Electron EXE not found"
                     }
 
 
-                    Write-Host "Electron artifacts:"
-
-
-                    $exeFiles |
-                        ForEach-Object {
-
-                            Write-Host $_.FullName
-                        }
+                    Write-Host "Electron EXE found."
                 '''
             }
         }
@@ -481,18 +433,14 @@ pipeline {
                         "$env:WORKSPACE\\backend\\target\\naukri-be.jar"
 
 
-                    $backendArtifact =
-                        "$backendDir\\naukri-be-$env:RELEASE_VERSION.jar"
-
-
                     Copy-Item `
                         $jarPath `
-                        $backendArtifact `
+                        "$backendDir\\naukri-be-$env:RELEASE_VERSION.jar" `
                         -Force
 
 
                     # ==========================================
-                    # REACT FRONTEND
+                    # FRONTEND
                     # ==========================================
 
                     $frontendBuild =
@@ -517,7 +465,7 @@ pipeline {
 
 
                     # ==========================================
-                    # ELECTRON EXE
+                    # ELECTRON
                     # ==========================================
 
                     $exeFiles =
@@ -551,20 +499,15 @@ pipeline {
                         }
 
 
-                    # ==========================================
-                    # DISPLAY ARTIFACTS
-                    # ==========================================
-
                     Write-Host ""
                     Write-Host "=========================================="
-                    Write-Host "PREPARED ARTIFACTS"
+                    Write-Host "ARTIFACTS READY"
                     Write-Host "=========================================="
 
 
                     Get-ChildItem `
                         $releaseDir `
-                        -Recurse |
-                        Select-Object FullName, Length
+                        -Recurse
                 '''
             }
         }
@@ -615,6 +558,9 @@ pipeline {
                             1>NUL
 
 
+                        if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+
+
                         az account set ^
                             --subscription %AZ_SUBSCRIPTION_ID%
 
@@ -627,61 +573,49 @@ pipeline {
 
 
         // =====================================================
-        // 12. VERIFY STORAGE ACCESS
+        // 12. VERIFY CONTAINERS
         // =====================================================
 
         stage('Verify Azure Storage Access') {
 
             steps {
 
-                withCredentials([
+                bat '''
 
-                    azureServicePrincipal(
-
-                        credentialsId:
-                            'azure-sp-naukri',
-
-                        subscriptionIdVariable:
-                            'AZ_SUBSCRIPTION_ID',
-
-                        clientIdVariable:
-                            'AZ_CLIENT_ID',
-
-                        clientSecretVariable:
-                            'AZ_CLIENT_SECRET',
-
-                        tenantIdVariable:
-                            'AZ_TENANT_ID'
-                    )
-
-                ]) {
-
-                    bat '''
-
-                        echo ==========================================
-                        echo VERIFYING BACKEND STORAGE
-                        echo ==========================================
+                    echo ==========================================
+                    echo VERIFYING BACKEND CONTAINER
+                    echo ==========================================
 
 
-                        az storage container show ^
-                            --name %AZ_BACKEND_CONTAINER% ^
-                            --account-name %AZ_BACKEND_STORAGE% ^
-                            --auth-mode login ^
-                            -o table
+                    az storage container show ^
+                        --name %AZ_BACKEND_CONTAINER% ^
+                        --account-name %AZ_STORAGE_ACCOUNT% ^
+                        --auth-mode login ^
+                        -o table
 
 
-                        echo ==========================================
-                        echo VERIFYING FRONTEND STORAGE
-                        echo ==========================================
+                    if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
 
-                        az storage container show ^
-                            --name %AZ_FRONTEND_CONTAINER% ^
-                            --account-name %AZ_FRONTEND_STORAGE% ^
-                            --auth-mode login ^
-                            -o table
-                    '''
-                }
+                    echo ==========================================
+                    echo VERIFYING FRONTEND CONTAINER
+                    echo ==========================================
+
+
+                    az storage container show ^
+                        --name %AZ_FRONTEND_CONTAINER% ^
+                        --account-name %AZ_STORAGE_ACCOUNT% ^
+                        --auth-mode login ^
+                        -o table
+
+
+                    if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+
+
+                    echo ==========================================
+                    echo BOTH CONTAINERS ARE ACCESSIBLE
+                    echo ==========================================
+                '''
             }
         }
 
@@ -694,49 +628,26 @@ pipeline {
 
             steps {
 
-                withCredentials([
+                bat '''
 
-                    azureServicePrincipal(
-
-                        credentialsId:
-                            'azure-sp-naukri',
-
-                        subscriptionIdVariable:
-                            'AZ_SUBSCRIPTION_ID',
-
-                        clientIdVariable:
-                            'AZ_CLIENT_ID',
-
-                        clientSecretVariable:
-                            'AZ_CLIENT_SECRET',
-
-                        tenantIdVariable:
-                            'AZ_TENANT_ID'
-                    )
-
-                ]) {
-
-                    bat '''
-
-                        echo ==========================================
-                        echo UPLOADING BACKEND
-                        echo ==========================================
+                    echo ==========================================
+                    echo UPLOADING BACKEND
+                    echo ==========================================
 
 
-                        az storage blob upload-batch ^
-                            --account-name %AZ_BACKEND_STORAGE% ^
-                            --destination %AZ_BACKEND_CONTAINER% ^
-                            --source release-artifacts\\backend ^
-                            --destination-path %RELEASE_VERSION% ^
-                            --auth-mode login
+                    az storage blob upload-batch ^
+                        --account-name %AZ_STORAGE_ACCOUNT% ^
+                        --destination %AZ_BACKEND_CONTAINER% ^
+                        --source release-artifacts\\backend ^
+                        --destination-path %RELEASE_VERSION% ^
+                        --auth-mode login
 
 
-                        if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+                    if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
 
-                        echo Backend upload successful.
-                    '''
-                }
+                    echo Backend upload successful.
+                '''
             }
         }
 
@@ -749,49 +660,26 @@ pipeline {
 
             steps {
 
-                withCredentials([
+                bat '''
 
-                    azureServicePrincipal(
-
-                        credentialsId:
-                            'azure-sp-naukri',
-
-                        subscriptionIdVariable:
-                            'AZ_SUBSCRIPTION_ID',
-
-                        clientIdVariable:
-                            'AZ_CLIENT_ID',
-
-                        clientSecretVariable:
-                            'AZ_CLIENT_SECRET',
-
-                        tenantIdVariable:
-                            'AZ_TENANT_ID'
-                    )
-
-                ]) {
-
-                    bat '''
-
-                        echo ==========================================
-                        echo UPLOADING FRONTEND
-                        echo ==========================================
+                    echo ==========================================
+                    echo UPLOADING FRONTEND
+                    echo ==========================================
 
 
-                        az storage blob upload-batch ^
-                            --account-name %AZ_FRONTEND_STORAGE% ^
-                            --destination %AZ_FRONTEND_CONTAINER% ^
-                            --source release-artifacts\\frontend ^
-                            --destination-path %RELEASE_VERSION% ^
-                            --auth-mode login
+                    az storage blob upload-batch ^
+                        --account-name %AZ_STORAGE_ACCOUNT% ^
+                        --destination %AZ_FRONTEND_CONTAINER% ^
+                        --source release-artifacts\\frontend ^
+                        --destination-path %RELEASE_VERSION% ^
+                        --auth-mode login
 
 
-                        if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+                    if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
 
-                        echo Frontend upload successful.
-                    '''
-                }
+                    echo Frontend upload successful.
+                '''
             }
         }
 
@@ -804,74 +692,39 @@ pipeline {
 
             steps {
 
-                withCredentials([
+                bat '''
 
-                    azureServicePrincipal(
-
-                        credentialsId:
-                            'azure-sp-naukri',
-
-                        subscriptionIdVariable:
-                            'AZ_SUBSCRIPTION_ID',
-
-                        clientIdVariable:
-                            'AZ_CLIENT_ID',
-
-                        clientSecretVariable:
-                            'AZ_CLIENT_SECRET',
-
-                        tenantIdVariable:
-                            'AZ_TENANT_ID'
-                    )
-
-                ]) {
-
-                    bat '''
-
-                        echo ==========================================
-                        echo BACKEND BLOBS
-                        echo ==========================================
+                    echo ==========================================
+                    echo BACKEND ARTIFACTS
+                    echo ==========================================
 
 
-                        az storage blob list ^
-                            --account-name %AZ_BACKEND_STORAGE% ^
-                            --container-name %AZ_BACKEND_CONTAINER% ^
-                            --prefix %RELEASE_VERSION% ^
-                            --auth-mode login ^
-                            -o table
+                    az storage blob list ^
+                        --account-name %AZ_STORAGE_ACCOUNT% ^
+                        --container-name %AZ_BACKEND_CONTAINER% ^
+                        --prefix %RELEASE_VERSION% ^
+                        --auth-mode login ^
+                        -o table
 
 
-                        echo ==========================================
-                        echo FRONTEND BLOBS
-                        echo ==========================================
+                    echo ==========================================
+                    echo FRONTEND ARTIFACTS
+                    echo ==========================================
 
 
-                        az storage blob list ^
-                            --account-name %AZ_FRONTEND_STORAGE% ^
-                            --container-name %AZ_FRONTEND_CONTAINER% ^
-                            --prefix %RELEASE_VERSION% ^
-                            --auth-mode login ^
-                            -o table
-                    '''
-                }
+                    az storage blob list ^
+                        --account-name %AZ_STORAGE_ACCOUNT% ^
+                        --container-name %AZ_FRONTEND_CONTAINER% ^
+                        --prefix %RELEASE_VERSION% ^
+                        --auth-mode login ^
+                        -o table
+                '''
             }
         }
 
 
         // =====================================================
-        // 16. CREATE RELEASE TAG
-        // =====================================================
-        //
-        // At this point:
-        //
-        // Build       SUCCESS
-        // Backend     uploaded
-        // Frontend    uploaded
-        //
-        // Create:
-        //
-        // v0.0.2
-        //
+        // 16. TAG RELEASE
         // =====================================================
 
         stage('Tag Release') {
@@ -894,7 +747,7 @@ pipeline {
                     bat '''
 
                         echo ==========================================
-                        echo CREATING RELEASE TAG
+                        echo TAGGING RELEASE
                         echo ==========================================
 
 
@@ -919,19 +772,6 @@ pipeline {
         // =====================================================
         // 17. PREPARE NEXT SNAPSHOT
         // =====================================================
-        //
-        // Example:
-        //
-        // Current:
-        // 0.0.1-SNAPSHOT
-        //
-        // Release:
-        // 0.0.2
-        //
-        // Next:
-        // 0.0.2-SNAPSHOT
-        //
-        // =====================================================
 
         stage('Prepare Next Snapshot') {
 
@@ -953,21 +793,13 @@ pipeline {
                     bat '''
 
                         echo ==========================================
-                        echo PREPARING NEXT MAVEN VERSION
+                        echo PREPARING NEXT VERSION
                         echo ==========================================
 
 
                         mvn -f backend\\pom.xml versions:set ^
                             -DnewVersion=%RELEASE_VERSION%-SNAPSHOT ^
                             -DgenerateBackupPoms=false
-
-
-                        echo.
-                        echo New Maven version:
-
-                        mvn -f backend\\pom.xml help:evaluate ^
-                            -Dexpression=project.version ^
-                            -q -B -DforceStdout
 
 
                         git config user.name "Jenkins CI"
@@ -990,7 +822,7 @@ pipeline {
 
 
         // =====================================================
-        // 18. ARCHIVE JENKINS ARTIFACTS
+        // 18. ARCHIVE
         // =====================================================
 
         stage('Archive') {
@@ -1041,23 +873,14 @@ pipeline {
             Release Version:
             ${env.RELEASE_VERSION}
 
-            Backend Storage:
-            ${env.AZ_BACKEND_STORAGE}
+            Storage Account:
+            ${env.AZ_STORAGE_ACCOUNT}
 
             Backend Container:
             ${env.AZ_BACKEND_CONTAINER}
 
-            Backend Path:
-            ${env.RELEASE_VERSION}/
-
-            Frontend Storage:
-            ${env.AZ_FRONTEND_STORAGE}
-
             Frontend Container:
             ${env.AZ_FRONTEND_CONTAINER}
-
-            Frontend Path:
-            ${env.RELEASE_VERSION}/
 
             Git Tag:
             v${env.RELEASE_VERSION}
@@ -1074,32 +897,14 @@ pipeline {
                     RELEASE FAILED
             ==========================================
 
-            Jenkins Build:
-            ${env.BUILD_NUMBER}
-
             Base Version:
             ${env.BASE_VERSION}
 
             Candidate Version:
             ${env.RELEASE_VERSION}
 
-            The Maven version will NOT be advanced
-            because the pipeline failed.
-
-            ==========================================
-            """
-        }
-
-
-        unstable {
-
-            echo """
-            ==========================================
-                    BUILD UNSTABLE
-            ==========================================
-
-            Build URL:
-            ${env.BUILD_URL}
+            Maven version will not be advanced
+            if the release process fails.
 
             ==========================================
             """
