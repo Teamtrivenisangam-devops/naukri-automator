@@ -9,7 +9,7 @@ Set-StrictMode -Version Latest
 
 Write-Host '==== build-backend phase ===='
 
-$env:JAVA_HOME = 'C:\Users\e182114\.jdks\azul-17.0.10'
+$env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-17.0.17.10-hotspot'
 # Resolve root: this script lives at <root>\build\phases\build-backend.ps1
 $root    = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $pomPath = Join-Path $root 'backend\pom.xml'
