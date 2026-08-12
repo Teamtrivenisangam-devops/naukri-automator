@@ -466,7 +466,7 @@ pipeline {
 
                     filesPath: 'backend/target/*.jar',
 
-                    storageCredentialId: 'azure-sp-naukri'
+                    storageCredentialId: 'azure-storage-cred'
 
                 )
             }
@@ -491,7 +491,7 @@ pipeline {
 
                     filesPath: 'mock-naukri/target/*.jar',
 
-                    storageCredentialId: 'azure-sp-naukri'
+                    storageCredentialId: 'azure-storage-cred'
 
                 )
             }
