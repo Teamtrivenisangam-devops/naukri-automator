@@ -516,7 +516,7 @@ pipeline {
 
                     filesPath: 'dist/**/*.exe',
 
-                    storageCredentialId: 'azure-sp-naukri'
+                    storageCredentialId: 'azure-storage-cred'
 
                 )
             }
