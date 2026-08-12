@@ -23,12 +23,6 @@ pipeline {
         )
     }
 
-    /*
-     * Jenkins itself can run on Java 21.
-     * The project build uses the Jenkins-configured Java17 tool.
-     */
-   
-
     environment {
 
         // =====================================================
@@ -84,9 +78,7 @@ pipeline {
 
                 git(
                     branch: 'main',
-
                     url: 'https://github.com/Teamtrivenisangam-devops/naukri-automator.git',
-
                     credentialsId: 'github-credentials'
                 )
             }
@@ -108,10 +100,8 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
-
                     echo "Latest commit message:"
                     echo lastMsg
-
 
                     if (lastMsg.contains('[skip ci]')) {
 
@@ -230,14 +220,12 @@ pipeline {
 
                     writeFile(
                         file: 'base-version.txt',
-
                         text: baseVersion
                     )
 
 
                     writeFile(
                         file: 'release-version.txt',
-
                         text: releaseVersion
                     )
 
@@ -272,8 +260,7 @@ pipeline {
                     if (!fileExists('release-version.txt')) {
 
                         error(
-                            'release-version.txt not found. ' +
-                            'Run the pipeline from Checkout using Build Now.'
+                            'release-version.txt not found.'
                         )
                     }
 
@@ -497,17 +484,21 @@ pipeline {
 
 
                     powershell """
+                        
+                        # ==========================================
+                        # DIRECTORIES
+                        # ==========================================
 
                         \\$releaseDir =
-                            "\\$env:WORKSPACE\\release-artifacts"
+                            "\$env:WORKSPACE\\release-artifacts"
 
 
                         \\$backendDir =
-                            "\\$releaseDir\\backend"
+                            "\$releaseDir\\backend"
 
 
                         \\$frontendDir =
-                            "\\$releaseDir\\frontend"
+                            "\$releaseDir\\frontend"
 
 
                         # ==========================================
@@ -546,7 +537,7 @@ pipeline {
                         # ==========================================
 
                         \\$jar =
-                            "\\$env:WORKSPACE\\backend\\target\\naukri-be.jar"
+                            "\$env:WORKSPACE\\backend\\target\\naukri-be.jar"
 
 
                         if (-not (Test-Path \\$jar)) {
@@ -557,7 +548,7 @@ pipeline {
 
                         Copy-Item `
                             \\$jar `
-                            "\\$backendDir\\naukri-be-${releaseVersion}.jar" `
+                            "\$backendDir\\naukri-be-${releaseVersion}.jar" `
                             -Force
 
 
@@ -566,7 +557,7 @@ pipeline {
                         # ==========================================
 
                         \\$frontendBuild =
-                            "\\$env:WORKSPACE\\frontend\\dist"
+                            "\$env:WORKSPACE\\frontend\\dist"
 
 
                         if (-not (Test-Path \\$frontendBuild)) {
@@ -577,14 +568,14 @@ pipeline {
 
                         New-Item `
                             -ItemType Directory `
-                            -Path "\\$frontendDir\\web" `
+                            -Path "\$frontendDir\\web" `
                             -Force |
                             Out-Null
 
 
                         Copy-Item `
-                            "\\$frontendBuild\\*" `
-                            "\\$frontendDir\\web" `
+                            "\$frontendBuild\\*" `
+                            "\$frontendDir\\web" `
                             -Recurse `
                             -Force
 
@@ -594,7 +585,7 @@ pipeline {
                         # ==========================================
 
                         \\$electronDir =
-                            "\\$frontendDir\\electron"
+                            "\$frontendDir\\electron"
 
 
                         New-Item `
@@ -606,7 +597,7 @@ pipeline {
 
                         \\$exeFiles =
                             Get-ChildItem `
-                            "\\$env:WORKSPACE\\dist" `
+                            "\$env:WORKSPACE\\dist" `
                             -Filter "*.exe" `
                             -File
 
@@ -622,7 +613,7 @@ pipeline {
 
                             Copy-Item `
                                 \\$exe.FullName `
-                                "\\$electronDir\\\$newName" `
+                                "\$electronDir\\\$newName" `
                                 -Force
                         }
 
@@ -1151,4 +1142,3 @@ pipeline {
         }
     }
 }
-
